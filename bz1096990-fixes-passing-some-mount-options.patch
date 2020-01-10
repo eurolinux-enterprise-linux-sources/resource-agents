@@ -1,0 +1,25 @@
+From 3d6cd5faf19c79d6dd409d1f88d369942a163068 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 19 Jan 2015 14:14:06 -0600
+Subject: [PATCH 2/6] bz1096990 fixes passing some mount options
+
+---
+ rgmanager/src/resources/fs.sh.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/rgmanager/src/resources/fs.sh.in b/rgmanager/src/resources/fs.sh.in
+index fb1293d..64e661c 100644
+--- a/rgmanager/src/resources/fs.sh.in
++++ b/rgmanager/src/resources/fs.sh.in
+@@ -293,7 +293,7 @@ verify_options()
+ 
+ 			if [ "$OCF_RESKEY_fstype" = "ext3" ] ||
+ 			   [ "$OCF_RESKEY_fstype" = "ext4" ]; then
+-				case $0 in
++				case $o in
+ 				noload|data=*)
+ 					continue
+ 					;;
+-- 
+1.8.4.2
+

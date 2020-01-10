@@ -1,0 +1,55 @@
+From 3b4525fc6bbf5997c1b4bfb62691f3c6347e1ba9 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 19 Jan 2015 14:43:50 -0600
+Subject: [PATCH 4/6] bz1150702 fixes mysql not stopped if data fs unavailable
+
+---
+ heartbeat/mysql | 25 +++++++++++++++++++++----
+ 1 file changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/heartbeat/mysql b/heartbeat/mysql
+index f7eb9f2..5968622 100755
+--- a/heartbeat/mysql
++++ b/heartbeat/mysql
+@@ -795,8 +795,16 @@ get_local_ip() {
+ # Functions invoked by resource manager actions
+ 
+ mysql_validate() {
+-    check_binary $OCF_RESKEY_binary
+-    check_binary  $OCF_RESKEY_client_binary
++
++    if ! have_binary "$OCF_RESKEY_binary"; then
++        ocf_log err "Setup problem: couldn't find command: $OCF_RESKEY_binary"
++        return $OCF_ERR_INSTALLED;
++    fi
++
++    if ! have_binary "$OCF_RESKEY_client_binary"; then
++        ocf_log err "Setup problem: couldn't find command: $OCF_RESKEY_client_binary"
++        return $OCF_ERR_INSTALLED;
++    fi
+ 
+     if [ ! -f $OCF_RESKEY_config ]; then
+         ocf_log err "Config $OCF_RESKEY_config doesn't exist";
+@@ -1249,8 +1257,17 @@ rc=$?
+ LSB_STATUS_STOPPED=3
+ if [ $rc -ne 0 ]; then
+     case "$1" in
+-        stop) exit $OCF_SUCCESS;;
+-        monitor) exit $OCF_NOT_RUNNING;;
++        stop) ;;
++        monitor)
++            mysql_status "info"
++            if [ $? -eq $OCF_SUCCESS ]; then
++                # if validatation fails and pid is active, always treat this as an error
++                ocf_log err "environment validation failed, active pid is in unknown state."
++                exit $OCF_ERR_GENERIC
++            fi
++            # validation failed and pid is not active, it's safe to say this instance is inactive.
++            exit $OCF_NOT_RUNNING;;
++
+         status) exit $LSB_STATUS_STOPPED;;
+         *) exit $rc;;
+     esac
+-- 
+1.8.4.2
+

@@ -1,0 +1,25 @@
+From 6217ec3ac938f1269032be5d67ccb2692aee1fb0 Mon Sep 17 00:00:00 2001
+From: John Ruemker <john.ruemker@gmail.com>
+Date: Mon, 19 Jan 2015 10:49:29 -0500
+Subject: [PATCH] fs-lib.sh: Fix missed detection of write failure
+
+---
+ rgmanager/src/resources/utils/fs-lib.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/rgmanager/src/resources/utils/fs-lib.sh b/rgmanager/src/resources/utils/fs-lib.sh
+index 06d978f..6288c09 100644
+--- a/rgmanager/src/resources/utils/fs-lib.sh
++++ b/rgmanager/src/resources/utils/fs-lib.sh
+@@ -583,7 +583,7 @@ is_alive()
+ 	done
+ 	if [ $rw -eq $YES ]; then
+ 		file=$(mktemp "$mount_point/.check_writable.$(hostname).XXXXXX")
+-		if [ ! -e $file ]; then
++		if [ ! -e "$file" ]; then
+ 			ocf_log err "${OCF_RESOURCE_INSTANCE}: is_alive: failed write test on [$mount_point]. Return code: $errcode"
+ 			return $NO
+ 		fi
+-- 
+1.8.4.2
+

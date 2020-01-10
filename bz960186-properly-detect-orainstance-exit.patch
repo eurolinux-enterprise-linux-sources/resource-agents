@@ -1,0 +1,26 @@
+From 6ab5ececa123cb7257caf4c88bd87b8ba89fe631 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Fri, 30 May 2014 15:17:03 -0500
+Subject: [PATCH 2/4] Low: orainstance.sh: the exit_idle function was a no-op
+ because of a malformed grep search
+
+---
+ rgmanager/src/resources/orainstance.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/rgmanager/src/resources/orainstance.sh b/rgmanager/src/resources/orainstance.sh
+index 9254744..b083224 100755
+--- a/rgmanager/src/resources/orainstance.sh
++++ b/rgmanager/src/resources/orainstance.sh
+@@ -207,7 +207,7 @@ exit_idle() {
+ 	declare -i n=0
+ 	
+ 	ocf_log debug "Waiting for Oracle processes for $ORACLE_SID to terminate..."
+-	while ps ax | grep $ORACLE_SID | grep -q -v $LSNR_PROCNAME | grep -q -v grep; do
++	while ps ax | grep $ORACLE_SID | grep -v grep | grep -q -v $LSNR_PROCNAME; do
+ 		if [ $n -ge 90 ]; then
+ 			ocf_log debug "Timed out while waiting for Oracle processes for $ORACLE_SID to terminate"
+ 			force_cleanup
+-- 
+1.8.4.2
+

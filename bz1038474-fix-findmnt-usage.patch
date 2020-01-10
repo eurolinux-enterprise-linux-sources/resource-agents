@@ -1,0 +1,49 @@
+From 6b562cbc8971812e56aaefe67cc270a785850dd4 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Tue, 27 May 2014 14:11:18 -0500
+Subject: [PATCH] High: fs-lib.sh: Fix usage of findmnt to work for filesystems
+ containing bind mounts
+
+---
+ rgmanager/src/resources/utils/fs-lib.sh | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/rgmanager/src/resources/utils/fs-lib.sh b/rgmanager/src/resources/utils/fs-lib.sh
+index 2697ed2..0cc6fbf 100644
+--- a/rgmanager/src/resources/utils/fs-lib.sh
++++ b/rgmanager/src/resources/utils/fs-lib.sh
+@@ -217,11 +217,11 @@ try_findmnt()
+ 
+ 	which findmnt > /dev/null 2>&1
+ 	if [ $? -eq 0 ]; then
+-		FINDMNT_OUTPUT=$(findmnt -o TARGET --noheadings $1)
++		FINDMNT_OUTPUT="$(findmnt -o TARGET --noheadings $1)"
+ 		if [ $? -ne 0 ]; then
+ 			# workaround mount helpers inconsistency that still
+ 			# add / on the device entry in /proc/mounts
+-			FINDMNT_OUTPUT=$(findmnt -o TARGET --noheadings $1/)
++			FINDMNT_OUTPUT="$(findmnt -o TARGET --noheadings $1/)"
+ 			if [ $? -ne 0 ]; then
+ 				return 1
+ 			else
+@@ -325,7 +325,7 @@ mount_in_use () {
+ 				if [ "$tmp_mp" = "$mp" ]; then
+ 					return $YES
+ 				fi
+-			done < <(echo $FINDMNT_OUTPUT)
++			done < <(echo "$FINDMNT_OUTPUT")
+ 			;;
+ 		*)
+ 			return $YES
+@@ -403,7 +403,7 @@ real_mountpoint()
+ 				found=0
+ 				break
+ 			fi
+-		done < <(echo $FINDMNT_OUTPUT)
++		done < <(echo "$FINDMNT_OUTPUT")
+ 		;;
+ 	1)
+ 		# findmnt found no mount points for the device
+-- 
+1.8.4.2
+

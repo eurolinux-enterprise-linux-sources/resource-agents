@@ -1,0 +1,30 @@
+From e0879c663030bc06904cb01c9c81c92154651e7a Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Fri, 30 May 2014 16:07:11 -0500
+Subject: [PATCH 4/4] High: oralistener.sh: Do not fail during stop if listener
+ has already stopped
+
+---
+ rgmanager/src/resources/oralistener.sh | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/rgmanager/src/resources/oralistener.sh b/rgmanager/src/resources/oralistener.sh
+index 90808ed..94698a9 100755
+--- a/rgmanager/src/resources/oralistener.sh
++++ b/rgmanager/src/resources/oralistener.sh
+@@ -107,6 +107,12 @@ start() {
+ stop() {
+ 	ocf_log info "Stopping listener $LISTENER"
+ 
++	monitor $OCF_CHECK_LEVEL
++	if [ $? -ne 0 ]; then
++		ocf_log info "Listener $LISTENER already stopped"
++		return 0
++	fi
++
+ 	lsnrctl_stdout=$(lsnrctl stop "$LISTENER")
+ 	if [ $? -ne 0 ]; then
+ 		ocf_log debug "stop listener $LISTENER failed $lsnrctl_stdout"
+-- 
+1.8.4.2
+

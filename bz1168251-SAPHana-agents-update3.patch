@@ -1,0 +1,13 @@
+--- a/heartbeat/SAPHana	2015-05-07 07:47:41.654914103 -0500
++++ b/heartbeat/SAPHana	2015-05-07 07:47:06.164755744 -0500
+@@ -1733,8 +1733,8 @@
+                         analyze_hana_sync_status
+                         ;;
+                 esac
+-                rem_role=$(get_hana_attribute ${remoteHost} ${ATTR_NAME_HANA_ROLES[@]})
+-                rem_clone_status=$(get_hana_attribute ${remoteHost} ${ATTR_NAME_HANA_CLONE_STATE[@]})
++                rem_role=$(get_hana_attribute ${remoteNode} ${ATTR_NAME_HANA_ROLES[@]})
++                rem_clone_status=$(get_hana_attribute ${remoteNode} ${ATTR_NAME_HANA_CLONE_STATE[@]})
+                 if [ "$promote_attr" = "DEMOTED" -a "$rem_clone_status" = "PROMOTED" ]; then
+                    case "$rem_role" in
+                        [234]:P:* ) # dual primary, but other instance marked as PROMOTED by the cluster

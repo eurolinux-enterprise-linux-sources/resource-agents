@@ -1,0 +1,32 @@
+From a28251bbf00e80cf470d4b6479d8d6d5d9185a81 Mon Sep 17 00:00:00 2001
+From: Pier <pierg75@yahoo.it>
+Date: Tue, 14 Oct 2014 21:23:38 +0100
+Subject: [PATCH] Handle ORA-* messages
+
+---
+ rgmanager/src/resources/orainstance.sh | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/rgmanager/src/resources/orainstance.sh b/rgmanager/src/resources/orainstance.sh
+index b083224..d7cc962 100755
+--- a/rgmanager/src/resources/orainstance.sh
++++ b/rgmanager/src/resources/orainstance.sh
+@@ -116,6 +116,15 @@ start_db() {
+ 	# Troubleshooting:
+ 	#   ORA-00845 - Try rm -f /dev/shm/ora_*
+ 	#   ORA-01081 - Try echo -e 'shutdown abort;\nquit;'|sqlplus "/ as sysdba"
++	# We need to ignore some non-fatl errors
++
++	ignore_error=(ORA-32004)
++
++	for error in ${ignore_error[*]}
++	do
++		startup_stdout=$(echo "$startup_stdout" | sed "s/${error}//g")
++	done
++
+ 	if [[ "$startup_stdout" =~ "ORA-" ]] || [[ "$startup_stdout" =~ "failure" ]]; then
+ 		ocf_log error "Starting Oracle DB $ORACLE_SID failed, found errors in stdout"
+ 		return 1
+-- 
+1.8.4.2
+

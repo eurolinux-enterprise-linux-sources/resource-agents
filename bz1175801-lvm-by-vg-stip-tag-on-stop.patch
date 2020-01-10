@@ -1,0 +1,25 @@
+From 54f206efae4f17f83bcb8d1bda48a8f16127ec96 Mon Sep 17 00:00:00 2001
+From: John Ruemker <john.ruemker@gmail.com>
+Date: Fri, 7 Nov 2014 12:22:57 -0500
+Subject: [PATCH] lvm_by_vg.sh: Only strip tag on stop if we are owner
+
+---
+ rgmanager/src/resources/lvm_by_vg.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/rgmanager/src/resources/lvm_by_vg.sh b/rgmanager/src/resources/lvm_by_vg.sh
+index d8a3e31..ab60970 100755
+--- a/rgmanager/src/resources/lvm_by_vg.sh
++++ b/rgmanager/src/resources/lvm_by_vg.sh
+@@ -509,7 +509,7 @@ function vg_stop_single
+ 
+ 	#  Make sure we are the owner before we strip the tags
+ 	vg_owner
+-	if [ $? -ne 0 ]; then
++	if [ $? -eq 1 ]; then
+ 		strip_tags
+ 	fi
+ 
+-- 
+1.8.4.2
+

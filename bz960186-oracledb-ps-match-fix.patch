@@ -1,0 +1,38 @@
+From fdbc4e5ddbf2bbb206740c2dab9b5ccd285e6396 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Thu, 31 Jul 2014 12:55:35 -0500
+Subject: [PATCH] Low: oracledb.sh: remove process path from process search
+ results
+
+---
+ rgmanager/src/resources/oracledb.sh | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+ mode change 100644 => 100755 rgmanager/src/resources/oracledb.sh
+
+diff --git a/rgmanager/src/resources/oracledb.sh b/rgmanager/src/resources/oracledb.sh
+old mode 100644
+new mode 100755
+index cdd2c9a..a27a55f
+--- a/rgmanager/src/resources/oracledb.sh
++++ b/rgmanager/src/resources/oracledb.sh
+@@ -361,7 +361,7 @@ force_cleanup()
+ 	declare pid
+ 
+ 	# Patch from Shane Bradley to fix 471266
+-	pids=`ps ax | grep $ORACLE_HOME | grep "ora_.*_${ORACLE_SID}" | grep -v grep | awk '{print $1}'`
++	pids=`ps ax | grep "ora_.*_${ORACLE_SID}" | grep -v grep | awk '{print $1}'`
+ 
+ 	ocf_log error "Not all Oracle processes for $ORACLE_SID exited cleanly, killing"
+ 
+@@ -389,7 +389,7 @@ exit_idle()
+ 
+ 	ocf_log debug "Waiting for Oracle processes for $ORACLE_SID to terminate..."
+ 	# grep -q "." keeps this loop going if the previous commands produce any stdout
+-	while ps ax | grep $ORACLE_HOME | grep "ora_.*_${ORACLE_SID}" | grep -v grep | awk '{print $1}' | grep -q "."; do
++	while ps ax | grep "ora_.*_${ORACLE_SID}" | grep -v grep | awk '{print $1}' | grep -q "."; do
+ 		if [ $n -ge 90 ]; then
+ 			ocf_log debug "Timed out while waiting for Oracle processes for $ORACLE_SID to terminate"
+ 			force_cleanup
+-- 
+1.8.4.2
+

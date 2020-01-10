@@ -1,0 +1,45 @@
+From 5b5141520d1142919ac0350a0d2dfe8f9564a161 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 7 Jul 2014 13:59:35 -0400
+Subject: [PATCH] Low: bind-mount.sh: Update meta-data to reflect required
+ arguments
+
+---
+ rgmanager/src/resources/bind-mount.sh | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/rgmanager/src/resources/bind-mount.sh b/rgmanager/src/resources/bind-mount.sh
+index 47bcccb..077e0a3 100755
+--- a/rgmanager/src/resources/bind-mount.sh
++++ b/rgmanager/src/resources/bind-mount.sh
+@@ -54,7 +54,17 @@ do_metadata()
+ 
+ 	<parameters>
+ 
+-		<parameter name="mountpoint" primary="1">
++		<parameter name="name" primary="1" unique="1">
++			<longdesc lang="en">
++			Symbolic name for this bind mount.
++			</longdesc>
++			<shortdesc lang="en">
++			Bind Mount Name
++			</shortdesc>
++		<content type="string"/>
++		</parameter>
++
++		<parameter name="mountpoint" unique="1" required="1">
+ 			<longdesc lang="en">
+ 			Target of this bind mount
+ 			</longdesc>
+@@ -64,7 +74,7 @@ do_metadata()
+ 		<content type="string"/>
+ 		</parameter>
+ 
+-		<parameter name="source">
++		<parameter name="source" required="1">
+ 			<longdesc lang="en">
+ 			Source of the bind mount
+ 			</longdesc>
+-- 
+1.7.11.7
+

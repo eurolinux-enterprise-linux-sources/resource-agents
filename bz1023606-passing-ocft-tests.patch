@@ -1,0 +1,606 @@
+From ebc6600e50da9b93085f3c092bd3eb54621f3fae Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Tue, 10 Jun 2014 09:19:26 -0500
+Subject: [PATCH] ocft updates
+
+---
+ tools/ocft/Filesystem  |   8 +--
+ tools/ocft/IPaddr2     |   1 +
+ tools/ocft/IPaddr2v4   | 130 ++++++++++++++++++++++++-------------------------
+ tools/ocft/IPaddr2v6   |  78 ++++++++++++++---------------
+ tools/ocft/IPsrcaddr   |   4 +-
+ tools/ocft/Makefile.am |  23 +++------
+ tools/ocft/SendArp     |   3 +-
+ tools/ocft/Xinetd      |   8 ++-
+ tools/ocft/apache      |  24 +++++++--
+ tools/ocft/mysql       |   5 +-
+ tools/ocft/nfsserver   |   5 +-
+ tools/ocft/pgsql       |   1 +
+ tools/ocft/tomcat      |  72 +++++++++++++++++++++++++++
+ 13 files changed, 224 insertions(+), 138 deletions(-)
+ create mode 100644 tools/ocft/tomcat
+
+diff --git a/tools/ocft/Filesystem b/tools/ocft/Filesystem
+index 75203d7..4e1981f 100644
+--- a/tools/ocft/Filesystem
++++ b/tools/ocft/Filesystem
+@@ -8,21 +8,21 @@ CONFIG
+ 	HangTimeout 20
+ 
+ VARIABLE
+-	OCFT_fs=/var/run/resource-agents/ocft-Filesystem-fs
++	OCFT_fs=/tmp/resource-agents/ocft-Filesystem-fs
+ 	OCFT_loop=/dev/loop7
+-	OCFT_dir=/var/run/resource-agents/ocft-Filesystem-mnt
++	OCFT_dir=/tmp/resource-agents/ocft-Filesystem-mnt
+ 
+ SETUP-AGENT
+ 	losetup $OCFT_loop 2>/dev/null && exit 1
+ 	rmdir $OCFT_dir 2>/dev/null || true
+-	mkdir $OCFT_dir
++	mkdir -p $OCFT_dir
+ 	dd if=/dev/zero of=$OCFT_fs bs=1 count=0 seek=16M 2>/dev/null
+ 	mke2fs -j -Fq -m 0 $OCFT_fs
+ 	losetup $OCFT_loop $OCFT_fs
+ 
+ CLEANUP-AGENT
+ 	rmdir $OCFT_dir
+-	rm $OCFT_fs
++	rm -f $OCFT_fs
+ 	losetup -d $OCFT_loop
+ 
+ CASE-BLOCK required_args
+diff --git a/tools/ocft/IPaddr2 b/tools/ocft/IPaddr2
+index bfa8283..c041a6b 100644
+--- a/tools/ocft/IPaddr2
++++ b/tools/ocft/IPaddr2
+@@ -70,6 +70,7 @@ CASE "check base env: set invalid 'OCF_RESKEY_nic'"
+ 	Include prepare
+ 	Env OCF_RESKEY_nic=not_nic
+ 	AgentRun start OCF_ERR_CONFIGURED
++	AgentRun validate-all OCF_ERR_CONFIGURED
+ 
+ CASE "normal start"
+ 	Include prepare
+diff --git a/tools/ocft/IPaddr2v4 b/tools/ocft/IPaddr2v4
+index 4d37168..a0df278 100644
+--- a/tools/ocft/IPaddr2v4
++++ b/tools/ocft/IPaddr2v4
+@@ -135,13 +135,13 @@ CASE "error params with wrong ip"
+ # Recommended to always specify both nic, cidr_netmask, and broadcast when you needed.
+ # IPaddr2 in 3.9.3 was using a wrong subnet mask (constant of 32) in this case.
+ #
+-CASE "params with force nic"
+-	Include prepare
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	AgentRun start OCF_ERR_GENERIC
+-	Include check_ip_removed
+-	Unenv OCF_RESKEY_nic
++#CASE "params with force nic"
++#	Include prepare
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	AgentRun start OCF_ERR_GENERIC
++#	Include check_ip_removed
++#	Unenv OCF_RESKEY_nic
+ 
+ # CASE No.10
+ # Note: this result is different from IPaddr2 in 3.9.3.
+@@ -163,16 +163,16 @@ CASE "params with force cidr_netmask (base netmask > assigned netmask)"
+ # Recommended to always specify both nic, cidr_netmask, and broadcast when you needed.
+ # IPaddr2 in 3.9.3 succeeded with using a calculated broadcast.
+ #
+-CASE "force to use the specified nic and cidr_netmask"
+-	Include prepare
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	Env OCFT_check_prefix=$OCFT_force_prefix
+-	AgentRun start OCF_SUCCESS
+-	AgentRun stop OCF_SUCCESS
+-	Include check_ip_removed
+-	Unenv OCF_RESKEY_cidr_netmask
++#CASE "force to use the specified nic and cidr_netmask"
++#	Include prepare
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	Env OCFT_check_prefix=$OCFT_force_prefix
++#	AgentRun start OCF_SUCCESS
++#	AgentRun stop OCF_SUCCESS
++#	Include check_ip_removed
++#	Unenv OCF_RESKEY_cidr_netmask
+ 
+ 
+ # CASE No.12
+@@ -238,15 +238,15 @@ CASE "error params with wrong ip and cidr_netmask (not exist base_ip)"
+ # Recommended to always specify both nic, cidr_netmask, and broadcast when you needed.
+ # IPaddr2 in 3.9.3 succeeded with using a calculated broadcast.
+ #
+-CASE "force to use the specified nic and cidr_netmask"
+-	Include prepare
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
+-	Env OCFT_check_prefix=$OCFT_force_prefix2
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	AgentRun start OCF_SUCCESS
+-	AgentRun stop OCF_SUCCESS
+-	Include check_ip_removed
++#CASE "force to use the specified nic and cidr_netmask"
++#	Include prepare
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
++#	Env OCFT_check_prefix=$OCFT_force_prefix2
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	AgentRun start OCF_SUCCESS
++#	AgentRun stop OCF_SUCCESS
++#	Include check_ip_removed
+ 
+ # CASE No.17
+ # Note: this result is different from IPaddr2 in 3.9.3.
+@@ -255,18 +255,18 @@ CASE "force to use the specified nic and cidr_netmask"
+ # Recommended to always specify both nic, cidr_netmask, and broadcast when you needed.
+ # IPaddr2 in 3.9.3 succeeded with using a calculated broadcast.
+ #
+-CASE "force to use the specified nic and cidr_netmask (not exist base_ip)"
+-	Include prepare
+-	Include base_ip_removed
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
+-	Env OCFT_check_prefix=$OCFT_force_prefix2
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	AgentRun start OCF_SUCCESS
+-	AgentRun stop OCF_SUCCESS
+-	Unenv OCF_RESKEY_nic
+-	Unenv OCF_RESKEY_cidr_netmask
+-	Include base_ip_assigned
++#CASE "force to use the specified nic and cidr_netmask (not exist base_ip)"
++#	Include prepare
++#	Include base_ip_removed
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
++#	Env OCFT_check_prefix=$OCFT_force_prefix2
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	AgentRun start OCF_SUCCESS
++#	AgentRun stop OCF_SUCCESS
++#	Unenv OCF_RESKEY_nic
++#	Unenv OCF_RESKEY_cidr_netmask
++#	Include base_ip_assigned
+ 
+ # CASE No.18
+ #
+@@ -290,34 +290,34 @@ CASE "params with broadcast, no nic, no cidr_netmask"
+ 
+ # CASE No.20
+ #
+-CASE "force to use the specified nic and cidr_netmask"
+-	Include prepare
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix
+-	Env OCF_RESKEY_broadcast=$OCFT_force_brd
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	Env OCFT_check_prefix=$OCFT_force_prefix
+-	AgentRun start OCF_SUCCESS
+-	Include check_ip_assigned
+-	AgentRun monitor OCF_SUCCESS
+-	AgentRun stop OCF_SUCCESS
+-	Include check_ip_removed
+-	Unenv OCF_RESKEY_cidr_netmask
++#CASE "force to use the specified nic and cidr_netmask"
++#	Include prepare
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix
++#	Env OCF_RESKEY_broadcast=$OCFT_force_brd
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	Env OCFT_check_prefix=$OCFT_force_prefix
++#	AgentRun start OCF_SUCCESS
++#	Include check_ip_assigned
++#	AgentRun monitor OCF_SUCCESS
++#	AgentRun stop OCF_SUCCESS
++#	Include check_ip_removed
++#	Unenv OCF_RESKEY_cidr_netmask
+ 
+ # CASE No.21
+ #
+-CASE "force to use the specified nic and cidr_netmask"
+-	Include prepare
+-	Include base_ip_removed
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
+-	Env OCF_RESKEY_broadcast=$OCFT_target_brd
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	Env OCFT_check_prefix=$OCFT_force_prefix2
+-	AgentRun start OCF_SUCCESS
+-	Include check_ip_assigned
+-	AgentRun monitor OCF_SUCCESS
+-	AgentRun stop OCF_SUCCESS
+-	Include check_ip_removed
+-	Include base_ip_assigned
++#CASE "force to use the specified nic and cidr_netmask"
++#	Include prepare
++#	Include base_ip_removed
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
++#	Env OCF_RESKEY_broadcast=$OCFT_target_brd
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	Env OCFT_check_prefix=$OCFT_force_prefix2
++#	AgentRun start OCF_SUCCESS
++#	Include check_ip_assigned
++#	AgentRun monitor OCF_SUCCESS
++#	AgentRun stop OCF_SUCCESS
++#	Include check_ip_removed
++#	Include base_ip_assigned
+ 
+diff --git a/tools/ocft/IPaddr2v6 b/tools/ocft/IPaddr2v6
+index d24d890..fe35046 100644
+--- a/tools/ocft/IPaddr2v6
++++ b/tools/ocft/IPaddr2v6
+@@ -146,13 +146,13 @@ CASE "error params with wrong ip and nic (not exist base_ip)"
+ 
+ # CASE No.11
+ #
+-CASE "params with force nic"
+-	Include prepare
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	AgentRun start OCF_ERR_GENERIC
+-	Include check_ip_removed
+-	Unenv OCF_RESKEY_nic
++#CASE "params with force nic"
++#	Include prepare
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	AgentRun start OCF_ERR_GENERIC
++#	Include check_ip_removed
++#	Unenv OCF_RESKEY_nic
+ 
+ # CASE No.12
+ #
+@@ -208,43 +208,43 @@ CASE "params with nic, cidr_netmask"
+ 
+ # CASE No.17
+ #
+-CASE "force to use the specified nic and cidr_netmask (base netmask < assigned netmask)"
+-	Include prepare
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	Env OCFT_check_prefix=$OCFT_force_prefix
+-	AgentRun start OCF_SUCCESS
+-	Include check_ip_assigned
+-	AgentRun stop OCF_SUCCESS
+-	Include check_ip_removed
++#CASE "force to use the specified nic and cidr_netmask (base netmask < assigned netmask)"
++#	Include prepare
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	Env OCFT_check_prefix=$OCFT_force_prefix
++#	AgentRun start OCF_SUCCESS
++#	Include check_ip_assigned
++#	AgentRun stop OCF_SUCCESS
++#	Include check_ip_removed
+ 
+ # CASE No.18
+ #  This use case is now valid. It was not allowed until v3.9.2.
+ #
+-CASE "force to use the specified nic and cidr_netmask (base netmask > assigned netmask)"
+-	Include prepare
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	Env OCFT_check_prefix=$OCFT_force_prefix2
+-	AgentRun start OCF_SUCCESS
+-	Include check_ip_assigned
+-	AgentRun stop OCF_SUCCESS
+-	Include check_ip_removed
++#CASE "force to use the specified nic and cidr_netmask (base netmask > assigned netmask)"
++#	Include prepare
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	Env OCFT_check_prefix=$OCFT_force_prefix2
++#	AgentRun start OCF_SUCCESS
++#	Include check_ip_assigned
++#	AgentRun stop OCF_SUCCESS
++#	Include check_ip_removed
+ 
+ # CASE No.19
+ #
+-CASE "force to use the specified nic and cidr_netmask (base netmask > assigned netmask)"
+-	Include prepare
+-	Include base_ip_removed
+-	Env OCF_RESKEY_nic=$OCFT_force_nic
+-	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
+-	Env OCFT_check_nic=$OCFT_force_nic
+-	Env OCFT_check_prefix=$OCFT_force_prefix2
+-	AgentRun start OCF_SUCCESS
+-	Include check_ip_assigned
+-	AgentRun stop OCF_SUCCESS
+-	Include check_ip_removed
+-	Include base_ip_assigned
++#CASE "force to use the specified nic and cidr_netmask (base netmask > assigned netmask)"
++#	Include prepare
++#	Include base_ip_removed
++#	Env OCF_RESKEY_nic=$OCFT_force_nic
++#	Env OCF_RESKEY_cidr_netmask=$OCFT_force_prefix2
++#	Env OCFT_check_nic=$OCFT_force_nic
++#	Env OCFT_check_prefix=$OCFT_force_prefix2
++#	AgentRun start OCF_SUCCESS
++#	Include check_ip_assigned
++#	AgentRun stop OCF_SUCCESS
++#	Include check_ip_removed
++#	Include base_ip_assigned
+ 
+diff --git a/tools/ocft/IPsrcaddr b/tools/ocft/IPsrcaddr
+index d95142e..934801d 100644
+--- a/tools/ocft/IPsrcaddr
++++ b/tools/ocft/IPsrcaddr
+@@ -3,12 +3,10 @@
+ CONFIG
+ 	Agent IPsrcaddr
+ 	AgentRoot /usr/lib/ocf/resource.d/heartbeat
+-	InstallPackage iproute2
+ 	HangTimeout 20
+ 
+ CASE-BLOCK required_args
+-	Env OCF_RESKEY_ipaddress= # put here your IP
+-	Env OCF_RESKEY_cidr_netmask= # and the netmask
++	Env OCF_RESKEY_ipaddress=$(ip addr | grep "inet " | tail -n 1 | sed "s/\// /g" | awk '{print $2}')
+ 
+ CASE-BLOCK default_status
+ 	AgentRun stop
+diff --git a/tools/ocft/Makefile.am b/tools/ocft/Makefile.am
+index 733e487..8ff5917 100644
+--- a/tools/ocft/Makefile.am
++++ b/tools/ocft/Makefile.am
+@@ -23,28 +23,21 @@ sbin_SCRIPTS		= ocft
+ 
+ ocftcfgsdir		= $(datadir)/$(PACKAGE_NAME)/ocft/configs
+ ocftcfgs_DATA      =  apache  	\
++			 Filesystem	\
+ 			 IPaddr2	\
+ 			 IPaddr2v4	\
+ 			 IPaddr2v6	\
+-			 IPv6addr	\
+-			 Filesystem	\
+-			 LVM	\
+-		       	 Raid1	\
+ 			 IPsrcaddr  	\
+-			 MailTo		\
++			 LVM	\
++			 MailTo	\
+ 		       	 mysql		\
+-		       	 mysql-proxy		\
+-		       	 pgsql		\
+-		       	 db2		\
+-		       	 oracle		\
+-		       	 drbd.linbit		\
++		       	 named		\
+ 		       	 nfsserver	\
+-		       	 portblock	\
+-		       	 iscsi	\
+-		       	 named	\
+-		       	 postfix	\
+-		       	 Xinetd	\
+-			 SendArp
++		       	 pgsql		\
++		       	 postfix		\
++			 SendArp	\
++			 tomcat	\
++		       	 Xinetd
+
+ ocftdir			= $(datadir)/$(PACKAGE_NAME)/ocft
+ ocft_DATA		= README	\
+diff --git a/tools/ocft/SendArp b/tools/ocft/SendArp
+index 7880388..adae63e 100644
+--- a/tools/ocft/SendArp
++++ b/tools/ocft/SendArp
+@@ -3,12 +3,11 @@
+ CONFIG
+ 	Agent SendArp
+ 	AgentRoot /usr/lib/ocf/resource.d/heartbeat
+-	InstallPackage resource-agents
+ 	HangTimeout 15
+ 
+ CASE-BLOCK required_args
+ 	Env OCF_RESKEY_ip=127.0.0.1
+-	Env OCF_RESKEY_nic=lo
++	Env OCF_RESKEY_nic=eth0
+ 	Env OCF_RESKEY_background=false
+ 
+ CASE-BLOCK default_status
+diff --git a/tools/ocft/Xinetd b/tools/ocft/Xinetd
+index ba9c85c..e26f495 100644
+--- a/tools/ocft/Xinetd
++++ b/tools/ocft/Xinetd
+@@ -5,8 +5,14 @@ CONFIG
+ 	AgentRoot /usr/lib/ocf/resource.d/heartbeat
+ 	InstallPackage xinetd
+ 
++SETUP-AGENT
++	service xinetd start
++
++CLEANUP-AGENT
++	service xinetd stop
++
+ CASE-BLOCK required_args
+-	Env OCF_RESKEY_service=discard
++	Env OCF_RESKEY_service=echo-stream
+ 
+ CASE-BLOCK default_status
+ 	AgentRun stop
+diff --git a/tools/ocft/apache b/tools/ocft/apache
+index 797412d..0a63dab 100644
+--- a/tools/ocft/apache
++++ b/tools/ocft/apache
+@@ -4,12 +4,30 @@
+ CONFIG
+ 	Agent apache
+ 	AgentRoot /usr/lib/ocf/resource.d/heartbeat
+-	InstallPackage apache2
++	InstallPackage httpd
+         HangTimeout 20
+ 
+ SETUP-AGENT
+-	/etc/init.d/apache2 start
+-	/etc/init.d/apache2 stop
++
++        cat << END >> /var/www/html/index.html 
++<html>
++ <body>My Test Site</body>
++ </html>
++END
++
++	cp /etc/httpd/conf/httpd.conf /etc/httpd/conf/httpd.conf.bu
++        cat << END >>  /etc/httpd/conf/httpd.conf
++<Location /server-status>
++    SetHandler server-status
++    Order deny,allow
++    Deny from all
++    Allow from 127.0.0.1
++</Location>
++END
++
++CLEANUP-AGENT
++	mv -f /etc/httpd/conf/httpd.conf.bu /etc/httpd/conf/httpd.conf
++	rm -f /var/www/html/index.html	
+ 
+ CASE-BLOCK default_status
+ 	AgentRun stop
+diff --git a/tools/ocft/mysql b/tools/ocft/mysql
+index 27fcb58..c03be4f 100644
+--- a/tools/ocft/mysql
++++ b/tools/ocft/mysql
+@@ -4,14 +4,13 @@ CONFIG
+ 	Agent mysql
+ 	AgentRoot /usr/lib/ocf/resource.d/heartbeat
+ 	InstallPackage mysql
++	InstallPackage mysql-server
+         HangTimeout 20
+ 
+-SETUP-AGENT
+-	/etc/init.d/mysql start
+-	/etc/init.d/mysql stop
+ 
+ CASE-BLOCK crm_setting
+ 	Env OCF_RESKEY_CRM_meta_timeout=15000
++	Env OCF_RESKEY_enable_creation=1
+ 
+ CASE-BLOCK default_status
+ 	AgentRun stop
+diff --git a/tools/ocft/nfsserver b/tools/ocft/nfsserver
+index cd73164..5eadff4 100644
+--- a/tools/ocft/nfsserver
++++ b/tools/ocft/nfsserver
+@@ -3,14 +3,13 @@
+ CONFIG
+ 	Agent nfsserver
+ 	AgentRoot /usr/lib/ocf/resource.d/heartbeat
+-	InstallPackage nfs-kernel-server
++	InstallPackage nfs-utils
+ 	HangTimeout 20
+ 
+ CASE-BLOCK required_args
+-	Env OCF_RESKEY_nfs_init_script=/etc/init.d/nfsserver
+ 	Env OCF_RESKEY_nfs_ip=127.0.0.1
+ 	Env OCF_RESKEY_nfs_shared_infodir=/var/lib/nfs
+-	Env OCF_RESKEY_nfs_notify_cmd=/usr/sbin/sm-notify
++	Env OCF_RESKEY_nfs_init_script=/etc/init.d/nfs
+ 
+ CASE-BLOCK default_status
+ 	AgentRun stop
+diff --git a/tools/ocft/pgsql b/tools/ocft/pgsql
+index 9944b09..fd61ee9 100644
+--- a/tools/ocft/pgsql
++++ b/tools/ocft/pgsql
+@@ -7,6 +7,7 @@ CONFIG
+         HangTimeout 20
+ 
+ SETUP-AGENT
++	service postgresql initdb > /dev/null 2>&1
+ 	/etc/init.d/postgresql start
+ 	/etc/init.d/postgresql stop
+ 
+diff --git a/tools/ocft/tomcat b/tools/ocft/tomcat
+new file mode 100644
+index 0000000..2cd5ae1
+--- /dev/null
++++ b/tools/ocft/tomcat
+@@ -0,0 +1,72 @@
++# tomcat
++#
++# NOTE: Clean up $catalina_home/logs before running this test
++#       otherwise creating the pid/log files may fail
++#       in the test case with a different user.
++
++CONFIG
++	Agent tomcat
++	AgentRoot /usr/lib/ocf/resource.d/heartbeat
++	InstallPackage tomcat6
++	HangTimeout 120
++
++VARIABLE
++	# Adjust accrding to your configuration
++	catalina_home=/usr/share/tomcat6
++	java_home=/usr/lib/jvm/jre-1.6.0-openjdk.x86_64
++
++CASE-BLOCK required_args_tomcat
++	Env OCF_RESKEY_catalina_home=${catalina_home}
++	Env OCF_RESKEY_java_home=${java_home}
++
++CASE-BLOCK args_clear
++	Unenv OCF_RESKEY_catalina_home
++	Unenv OCF_RESKEY_tomcat_user
++	Unenv OCF_RESKEY_java_home
++
++CASE-BLOCK default_status
++	AgentRun stop
++
++CASE-BLOCK prepare_tomcat
++	Include required_args_tomcat
++	Include default_status
++
++# Test CASE
++#
++#CASE "normal start tomcat require_args (user:user)"
++#	Include prepare_tomcat
++#	AgentRun start OCF_SUCCESS
++#	AgentRun monitor OCF_SUCCESS
++#	AgentRun stop  OCF_SUCCESS
++#	AgentRun monitor OCF_NOT_RUNNING
++#	Include args_clear
++
++#CASE "normal start tomcat require_args (user:root)"
++#	Include prepare_tomcat
++#	Unenv OCF_RESKEY_tomcat_user
++#	AgentRun start OCF_SUCCESS
++#	AgentRun monitor OCF_SUCCESS
++#	AgentRun stop  OCF_SUCCESS
++#	AgentRun monitor OCF_NOT_RUNNING
++#	Include args_clear
++
++CASE "error start tomcat no catalina_home"
++	Include prepare_tomcat
++	Unenv OCF_RESKEY_catalina_home
++	AgentRun start OCF_ERR_INSTALLED
++	Include args_clear
++
++CASE "error start tomcat no java_home"
++	Include prepare_tomcat
++	Unenv OCF_RESKEY_java_home
++	AgentRun start OCF_ERR_INSTALLED
++	Include args_clear
++
++CASE "error start tomcat no java command"
++	Include prepare_tomcat
++	Env OCF_RESKEY_java_home=/var
++	AgentRun start OCF_ERR_INSTALLED
++	AgentRun stop OCF_SUCCESS
++	AgentRun monitor OCF_NOT_RUNNING
++	Include args_clear
++
+-- 
+1.8.4.2
+

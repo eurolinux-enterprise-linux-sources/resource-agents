@@ -1,0 +1,1188 @@
+From a78bc466ea60f69228035b962c2420c81ad7c3b7 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 16 Jun 2014 12:18:32 -0500
+Subject: [PATCH] nfs updates
+
+---
+ doc/man/Makefile.am   |   1 +
+ heartbeat/Makefile.am |   1 +
+ heartbeat/exportfs    | 122 ++++++-------
+ heartbeat/nfsnotify   | 315 ++++++++++++++++++++++++++++++++
+ heartbeat/nfsserver   | 484 +++++++++++++++++++++++++++++++++++++++-----------
+ 5 files changed, 755 insertions(+), 168 deletions(-)
+ create mode 100644 heartbeat/nfsnotify
+
+diff --git a/doc/man/Makefile.am b/doc/man/Makefile.am
+index 9e2b733..5a1ad4d 100644
+--- a/doc/man/Makefile.am
++++ b/doc/man/Makefile.am
+@@ -110,6 +110,7 @@ man_MANS	       = ocf_heartbeat_AoEtarget.7 \
+                           ocf_heartbeat_mysql.7 \
+                           ocf_heartbeat_mysql-proxy.7 \
+                           ocf_heartbeat_named.7 \
++                          ocf_heartbeat_nfsnotify.7 \
+                           ocf_heartbeat_nfsserver.7 \
+                           ocf_heartbeat_nginx.7 \
+                           ocf_heartbeat_oracle.7 \
+diff --git a/heartbeat/Makefile.am b/heartbeat/Makefile.am
+index f0ad168..f08dad4 100644
+--- a/heartbeat/Makefile.am
++++ b/heartbeat/Makefile.am
+@@ -88,6 +88,7 @@ ocf_SCRIPTS	     =  ClusterMon		\
+ 			mysql			\
+ 			mysql-proxy		\
+ 			named			\
++			nfsnotify		\
+ 			nfsserver		\
+ 			oracle			\
+ 			oralsnr			\
+diff --git a/heartbeat/exportfs b/heartbeat/exportfs
+index ff5d4f1..471da24 100755
+--- a/heartbeat/exportfs
++++ b/heartbeat/exportfs
+@@ -95,6 +95,12 @@ Unique fsid within cluster.
+ Relinquish NFS locks associated with this filesystem when the resource
+ stops. Enabling this parameter is highly recommended unless the path exported
+ by this ${__SCRIPT_NAME} resource is also exported by a different resource.
++
++Note: Unlocking is only possible on Linux systems where
++/proc/fs/nfsd/unlock_filesystem exists and is writable. If your system does
++not fulfill this requirement (on account of having an nonrecent kernel,
++for example), you may set this parameter to 0 to silence the associated
++warning.
+ </longdesc>
+ <shortdesc lang="en">
+ Unlock filesystem on stop?
+@@ -141,7 +147,7 @@ Location of the rmtab backup, relative to directory.
+ 
+ <actions>
+ <action name="start"   timeout="40" />
+-<action name="stop"    timeout="10" />
++<action name="stop"    timeout="120" />
+ <action name="monitor" depth="0"  timeout="20" interval="10" />
+ <action name="meta-data"  timeout="5" />
+ <action name="validate-all"  timeout="30" />
+@@ -152,28 +158,41 @@ END
+ return $OCF_SUCCESS
+ }
+ 
++exportfs_methods() {
++  cat <<-!
++	start
++	stop
++	status
++	monitor
++	validate-all
++	methods
++	meta-data
++	usage
++	!
++}
++
+ backup_rmtab() {
+-    local rmtab_backup
+-    if [ ${OCF_RESKEY_rmtab_backup} != "none" ]; then
+-	rmtab_backup="${OCF_RESKEY_directory}/${OCF_RESKEY_rmtab_backup}"
+-	grep ":${OCF_RESKEY_directory}:" /var/lib/nfs/rmtab > ${rmtab_backup}
+-    fi
++	local rmtab_backup
++	if [ ${OCF_RESKEY_rmtab_backup} != "none" ]; then
++		rmtab_backup="${OCF_RESKEY_directory}/${OCF_RESKEY_rmtab_backup}"
++		grep ":${OCF_RESKEY_directory}:" /var/lib/nfs/rmtab > ${rmtab_backup}
++	fi
+ }
+ 
+ restore_rmtab() {
+-    local rmtab_backup
+-    if [ ${OCF_RESKEY_rmtab_backup} != "none" ]; then
++	local rmtab_backup
++	if [ ${OCF_RESKEY_rmtab_backup} != "none" ]; then
+ 	rmtab_backup="${OCF_RESKEY_directory}/${OCF_RESKEY_rmtab_backup}"
+ 	if [ -r ${rmtab_backup} ]; then
+-	    local tmpf=`mktemp`
+-	    sort -u ${rmtab_backup} /var/lib/nfs/rmtab > $tmpf &&
++		local tmpf=`mktemp`
++		sort -u ${rmtab_backup} /var/lib/nfs/rmtab > $tmpf &&
+ 		install -o root -m 644 $tmpf /var/lib/nfs/rmtab
+-	    rm -f $tmpf
+-	    ocf_log debug "Restored `wc -l ${rmtab_backup}` rmtab entries from ${rmtab_backup}."
++		rm -f $tmpf
++		ocf_log debug "Restored `wc -l ${rmtab_backup}` rmtab entries from ${rmtab_backup}."
+ 	else
+-	    ocf_log warn "rmtab backup ${rmtab_backup} not found or not readable."
++		ocf_log warn "rmtab backup ${rmtab_backup} not found or not readable."
++	fi
+ 	fi
+-    fi
+ }
+ 
+ exportfs_usage() {
+@@ -186,8 +205,8 @@ is_exported() {
+ 	local dir=$1
+ 	local spec=$2
+ 	exportfs |
+-	        sed -e '$! N; s/\n[[:space:]]\+/ /; t; s/[[:space:]]\+\([^[:space:]]\+\)\(\n\|$\)/ \1\2/g; P;D;' |
+-			grep -q -x -F "$dir $spec"
++		sed -e '$! N; s/\n[[:space:]]\+/ /; t; s/[[:space:]]\+\([^[:space:]]\+\)\(\n\|$\)/ \1\2/g; P;D;' |
++		grep -q -x -F "$dir $spec"
+ }
+ 
+ exportfs_monitor ()
+@@ -209,8 +228,10 @@ exportfs_monitor ()
+ #Adapt grep status code to OCF return code
+ 	case $rc in
+ 	0)
+-		ocf_log info "Directory ${OCF_RESKEY_directory} is exported to ${OCF_RESKEY_clientspec} (started)."
+-	        # Backup the rmtab to ensure smooth NFS-over-TCP failover
++		if [ "$__OCF_ACTION" = "start" ]; then
++			ocf_log info "Directory ${OCF_RESKEY_directory} is exported to ${OCF_RESKEY_clientspec} (started)."
++		fi
++		# Backup the rmtab to ensure smooth NFS-over-TCP failover
+ 		backup_rmtab
+ 		return $OCF_SUCCESS
+ 		;;
+@@ -324,60 +345,23 @@ exportfs_stop ()
+ 	fi
+ }
+ 
+-exportfs_validate ()
++exportfs_validate_all ()
+ {
+-	# Checks for required parameters
+-	if [ -z "$OCF_RESKEY_directory" ]; then
+-		ocf_log err "Missing required parameter \"directory\""
+-		exit $OCF_ERR_CONFIGURED
+-	fi
+-	if [ -z "$OCF_RESKEY_fsid" ]; then
+-		ocf_log err "Missing required parameter \"fsid\""
+-		exit $OCF_ERR_CONFIGURED
+-	fi
+-	if [ -z "$OCF_RESKEY_clientspec" ]; then
+-		ocf_log err "Missing required parameter \"clientspec\""
+-		exit $OCF_ERR_CONFIGURED
+-	fi
+-	
+-	# Checks applicable only to non-probes
+-	if ! ocf_is_probe; then
+-		if [ ! -d $OCF_RESKEY_directory ]; then
+-			ocf_log err "$OCF_RESKEY_directory does not exist or is not a directory"
+-			exit $OCF_ERR_INSTALLED
+-		fi
++	if [ ! -d $OCF_RESKEY_directory ]; then
++		ocf_log err "$OCF_RESKEY_directory does not exist or is not a directory"
++		return $OCF_ERR_INSTALLED
+ 	fi
+ }
+ 
+-if [ $# -ne 1 ]; then
+-	exportfs_usage
+-	exit $OCF_ERR_ARGS
++# If someone puts a trailing slash at the end of the export directory,
++# this agent is going to fail in some unexpected ways due to how
++# export strings are matched.  The simplest solution here is to strip off
++# a trailing '/' in the directory before processing anything.
++newdir=$(echo "$OCF_RESKEY_directory" | sed -n -e 's/^\(.*\)\/$/\1/p')
++if [ -n "$newdir" ]; then
++	OCF_RESKEY_directory=$newdir
+ fi
+ 
+-case $__OCF_ACTION in
+-	meta-data)  exportfs_meta_data
+-		exit $OCF_SUCCESS
+-		;;
+-	usage|help) exportfs_usage
+-		exit $OCF_SUCCESS
+-		;;
+-	*)
+-		;;
+-esac
+-
+-exportfs_validate
+-
+-case $__OCF_ACTION in
+-	start)		exportfs_start
+-		;;
+-	stop)		exportfs_stop
+-		;;
+-	status|monitor)	exportfs_monitor
+-		;;
+-	validate-all)
+-		# nothing to do -- we're already validated
+-		;;
+-	*)		exportfs_usage
+-			exit $OCF_ERR_UNIMPLEMENTED
+-		;;
+-esac
++OCF_REQUIRED_PARAMS="directory fsid clientspec"
++OCF_REQUIRED_BINARIES="exportfs"
++ocf_rarun $*
+diff --git a/heartbeat/nfsnotify b/heartbeat/nfsnotify
+new file mode 100644
+index 0000000..2e242de
+--- /dev/null
++++ b/heartbeat/nfsnotify
+@@ -0,0 +1,315 @@
++#!/bin/bash
++#
++# Copyright (c) 2014 David Vossel <dvossel@redhat.com>
++#                    All Rights Reserved.
++#
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of version 2 of the GNU General Public License as
++# published by the Free Software Foundation.
++#
++# This program is distributed in the hope that it would be useful, but
++# WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++#
++# Further, this software is distributed without any warranty that it is
++# free of the rightful claim of any third person regarding infringement
++# or the like.  Any license provided herein, whether implied or
++# otherwise, applies only to this software file.  Patent licenses, if
++# any, provided herein do not apply to combinations of this program with
++# other software, or any other product whatsoever.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write the Free Software Foundation,
++# Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, USA.
++#
++
++#######################################################################
++# Initialization:
++
++: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
++. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
++. ${OCF_FUNCTIONS_DIR}/ocf-directories
++
++#######################################################################
++
++sbindir=$HA_SBIN_DIR
++if [ -z "$sbindir" ]; then
++	sbindir=/usr/sbin
++fi
++
++SELINUX_ENABLED=-1
++
++NFSNOTIFY_TMP_DIR="${HA_RSCTMP}/nfsnotify_${OCF_RESOURCE_INSTANCE}/"
++HA_STATD_PIDFILE="$NFSNOTIFY_TMP_DIR/rpc.statd_${OCF_RESOURCE_INSTANCE}.pid"
++HA_STATD_PIDFILE_PREV="$NFSNOTIFY_TMP_DIR/rpc.statd_${OCF_RESOURCE_INSTANCE}.pid.prev"
++STATD_PATH="/var/lib/nfs/statd"
++SM_NOTIFY_BINARY="${sbindir}/sm-notify"
++IS_RENOTIFY=0
++
++meta_data() {
++	cat <<END
++<?xml version="1.0"?>
++<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
++<resource-agent name="nfsnotify" version="0.9">
++<version>1.0</version>
++
++<longdesc lang="en">
++This agent sends NFSv3 reboot notifications to clients which informs clients to reclaim locks.
++</longdesc>
++<shortdesc lang="en">sm-notify reboot notifications</shortdesc>
++
++<parameters>
++
++<parameter name="source_host" unique="0" required="0">
++<longdesc lang="en">
++Comma separated list of floating IP addresses or host names that clients use
++to access the nfs service.  This will be used to set the source address and
++mon_name of the SN_NOTIFY reboot notifications.
++</longdesc>
++<shortdesc lang="en">source IP addresses</shortdesc>
++<content type="string" default="" />
++</parameter>
++
++<parameter name="notify_args" unique="0" required="0">
++<longdesc lang="en">
++Additional arguments to send to the sm-notify command. By default
++this agent will always set sm-notify's '-f' option.  When the
++source_host option is set, the '-v' option will be used automatically
++to set the proper source address. Any additional sm-notify arguments
++set with this option will be used in addition to the previous default
++arguments.
++</longdesc>
++<shortdesc lang="en">sm-notify arguments</shortdesc>
++<content type="string" default="false" />
++</parameter>
++
++</parameters>
++
++<actions>
++<action name="start"        timeout="90" />
++<action name="stop"         timeout="90" />
++<action name="monitor"      timeout="90" interval="30" depth="0" />
++<action name="reload"       timeout="90" />
++<action name="meta-data"    timeout="10" />
++<action name="validate-all"   timeout="20" />
++</actions>
++</resource-agent>
++END
++}
++
++v3notify_usage()
++{
++	cat <<END
++usage: $0 {start|stop|monitor|validate-all|meta-data}
++
++Expects to have a fully populated OCF RA-compliant environment set.
++END
++}
++
++v3notify_validate()
++{
++	# check_binary will exit with OCF_ERR_INSTALLED when binary is missing
++	check_binary "$SM_NOTIFY_BINARY"
++	check_binary "pgrep"
++	check_binary "killall"
++
++	return $OCF_SUCCESS
++}
++
++killall_smnotify()
++{
++	# killall sm-notify 
++	killall -TERM $SM_NOTIFY_BINARY > /dev/null 2>&1
++	if [ $? -eq 0 ]; then
++		# it is useful to know if sm-notify processes were actually left around
++		# or not during the stop/start operation. Whether this condition is true
++		# or false does not indicate a failure. It does indicate that 
++		# there are probably some unresponsive nfs clients out there that are keeping
++		# the sm-notify processes retrying.
++		ocf_log info "previous sm-notify processes terminated before $__OCF_ACTION action."
++	fi
++}
++
++v3notify_stop()
++{
++	killall_smnotify
++
++	rm -f $HA_STATD_PIDFILE_PREV > /dev/null 2>&1
++	mv $HA_STATD_PIDFILE $HA_STATD_PIDFILE_PREV > /dev/null 2>&1
++
++	return $OCF_SUCCESS
++}
++
++check_statd_pidfile()
++{
++	local binary="rpc.statd"
++	local pidfile="$HA_STATD_PIDFILE"
++
++	ocf_log debug "Checking status for ${binary}."
++	if [ -e "$pidfile" ]; then
++		cat /proc/$(cat $pidfile)/cmdline 2>/dev/null | grep -a "${binary}" > /dev/null 2>&1
++		if [ $? -eq 0 ]; then
++			return $OCF_SUCCESS
++		fi
++
++		ocf_log err "$(cat $pidfile) for $binary is no longer running, sm-notify needs to re-notify clients"
++		return $OCF_ERR_GENERIC
++	fi
++
++	# if we don't have a pid file for rpc.statd, we have not yet sent the notifications
++	return $OCF_NOT_RUNNING
++}
++
++write_statd_pid()
++{
++	local binary="rpc.statd"
++	local pidfile="$HA_STATD_PIDFILE"
++	local pid
++
++	pid=$(pgrep ${binary})
++	case $? in
++		0)
++			ocf_log info "PID file (pid:${pid} at $pidfile) created for ${binary}."
++			mkdir -p $(dirname $pidfile)
++			echo "$pid" > $pidfile
++			return $OCF_SUCCESS;;
++		1)
++			rm -f "$pidfile" > /dev/null 2>&1 
++			ocf_log info "$binary is not running"
++			return $OCF_NOT_RUNNING;;
++		*)
++			rm -f "$pidfile" > /dev/null 2>&1 
++			ocf_log err "Error encountered detecting pid status of $binary"
++			return $OCF_ERR_GENERIC;;
++	esac
++}
++
++copy_statd()
++{
++	local src=$1
++	local dest=$2
++
++	if ! [ -d "$dest" ]; then
++		mkdir -p "$dest"
++	fi
++
++	cp -rpfn $src/sm $src/sm.bak $src/state $dest > /dev/null 2>&1
++
++	# make sure folder ownership and selinux lables stay consistent
++	[ -n "`id -u rpcuser`" -a "`id -g rpcuser`" ] && chown rpcuser.rpcuser "$dest"
++	[ $SELINUX_ENABLED -eq 0 ] && chcon -R "$SELINUX_LABEL" "$dest"
++}
++
++v3notify_start()
++{
++	local rc=$OCF_SUCCESS
++	local cur_statd
++	local statd_backup
++	local is_renotify=0
++
++	# monitor, see if we need to notify or not
++	v3notify_monitor
++	if [ $? -eq 0 ]; then
++		return $OCF_SUCCESS
++	fi
++
++	# kill off any other sm-notify processes that might already be running.
++	killall_smnotify
++
++	# record the pid of rpc.statd. if this pid ever changes, we have to re-notify
++	write_statd_pid
++	rc=$?
++	if [ $rc -ne 0 ]; then
++		return $rc
++	fi
++
++	# if the last time we ran nfs-notify, it was with the same statd process,
++	# consider this a re-notification. During re-notifications we do not let the
++	# sm-notify binary have access to the real statd directory.
++	if [ "$(cat $HA_STATD_PIDFILE)" = "$(cat $HA_STATD_PIDFILE_PREV 2>/dev/null)" ]; then
++		ocf_log info "Renotifying clients"
++		is_renotify=1
++	fi
++
++	statd_backup="$STATD_PATH/nfsnotify.bu"
++	copy_statd "$STATD_PATH" "$statd_backup"
++
++	if [ -z "$OCF_RESKEY_source_host" ]; then
++		if [ "$is_renotify" -eq 0 ]; then
++			cur_statd="$STATD_PATH"
++		else 
++			cur_statd="$statd_backup"
++		fi
++		ocf_log info "sending notifications on default source address."
++		$SM_NOTIFY_BINARY -f $OCF_RESKEY_notify_args -P $cur_statd
++		if [ $? -ne 0 ]; then
++			ocf_log err "sm-notify failed, view syslog for more information."
++			return $OCF_ERR_GENERIC
++		fi
++		
++		return $OCF_SUCCESS
++	fi
++
++	# do sm-notify for each ip
++	for ip in `echo ${OCF_RESKEY_source_host} | sed 's/,/ /g'`; do
++
++		# have the first sm-notify use the actual statd directory so the
++		# notify list can be managed properly.
++		if [ "$is_renotify" -eq 0 ]; then
++			cur_statd="$STATD_PATH"
++			# everything after the first notify we are considering a renotification
++			# which means we don't use the real statd directory. 
++			is_renotify=1
++		else 
++			# use our copied statd directory for the remaining ip addresses
++			cur_statd="$STATD_PATH/nfsnotify_${OCF_RESOURCE_INSTANCE}_${ip}"
++			copy_statd "$statd_backup" "$cur_statd"
++		fi
++
++		ocf_log info "sending notifications with source address $ip"
++		$SM_NOTIFY_BINARY -f $OCF_RESKEY_notify_args -v $ip -P "$cur_statd"
++		if [ $? -ne 0 ]; then
++			ocf_log err "sm-notify with source host set to, $source_host, failed. view syslog for more information"
++			return $OCF_ERR_GENERIC
++		fi
++	done
++
++	return $OCF_SUCCESS
++}
++
++v3notify_monitor()
++{
++	# verify rpc.statd is up, and that the rpc.statd pid is the same one we
++	# found during the start. otherwise rpc.statd recovered and we need to notify
++	# again.
++	check_statd_pidfile
++}
++
++case $__OCF_ACTION in
++	meta-data)   meta_data
++		exit $OCF_SUCCESS;;
++	usage|help)    v3notify_usage
++		exit $OCF_SUCCESS;;
++	*)
++		;;
++esac
++
++which restorecon > /dev/null 2>&1 && selinuxenabled
++SELINUX_ENABLED=$?
++if [ $SELINUX_ENABLED -eq 0 ]; then
++	export SELINUX_LABEL="$(ls -ldZ $STATD_PATH | cut -f4 -d' ')"
++fi
++
++case $__OCF_ACTION in
++	start)         v3notify_start;;
++	stop)          v3notify_stop;;
++	monitor)       v3notify_monitor;;
++	validate-all)  v3notify_validate;;
++	*)             v3notify_usage
++	               exit $OCF_ERR_UNIMPLEMENTED;;
++esac
++
++rc=$?
++ocf_log debug "${OCF_RESOURCE_INSTANCE} $__OCF_ACTION : $rc"
++exit $rc
++
+diff --git a/heartbeat/nfsserver b/heartbeat/nfsserver
+index 86eaf39..d84f2be 100755
+--- a/heartbeat/nfsserver
++++ b/heartbeat/nfsserver
+@@ -12,14 +12,23 @@ else
+ . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+ fi
+ 
+-DEFAULT_INIT_SCRIPT="/etc/init.d/nfs"
+-DEFAULT_NOTIFY_CMD="/usr/sbin/sm-notify"
++DEFAULT_INIT_SCRIPT="/etc/init.d/nfsserver"
++if ! [ -f $DEFAULT_INIT_SCRIPT ]; then
++	# On some systems, the script is just called nfs
++	DEFAULT_INIT_SCRIPT="/etc/init.d/nfs"
++fi
++
++DEFAULT_NOTIFY_CMD=`which sm-notify`
++DEFAULT_NOTIFY_CMD=${DEFAULT_NOTIFY_CMD:-"/sbin/sm-notify"}
+ DEFAULT_NOTIFY_FOREGROUND="false"
+ DEFAULT_RPCPIPEFS_DIR="/var/lib/nfs/rpc_pipefs"
+ EXEC_MODE=0
+ SELINUX_ENABLED=-1
+ STATD_PATH="/var/lib/nfs"
+ STATD_DIR=""
++NFS_SYSCONFIG="/etc/sysconfig/nfs"
++NFS_SYSCONFIG_LOCAL_BACKUP="/etc/sysconfig/nfs.ha.bu"
++NFS_SYSCONFIG_AUTOGEN_TAG="AUTOGENERATED by $0 high availability resource-agent"
+ 
+ nfsserver_meta_data() {
+ 	cat <<END
+@@ -53,21 +62,19 @@ Init script for nfsserver
+ <content type="string" default="auto detected" />
+ </parameter>
+ 
+-<parameter name="nfs_notify_cmd" unique="0" required="0">
++<parameter name="nfs_no_notify" unique="0" required="0">
+ <longdesc lang="en">
+-The tool to send out NSM reboot notification; it should be either sm-notify or rpc.statd.
+-Failover of nfsserver can be considered as rebooting to different machines.
+-The nfsserver resource agent use this command to notify all clients about the occurrence of failover.
++Do not send reboot notifications to NFSv3 clients during server startup.
+ </longdesc>
+ <shortdesc lang="en">
+-The tool to send out notification.
++Disable NFSv3 server reboot notifications
+ </shortdesc>
+-<content type="string" default="$DEFAULT_NOTIFY_CMD" />
++<content type="boolean" default="false" />
+ </parameter>
+ 
+ <parameter name="nfs_notify_foreground" unique="0" required="0">
+ <longdesc lang="en">
+-Keeps the notify tool attached to its controlling terminal and running in the foreground.
++Keeps the sm-notify attached to its controlling terminal and running in the foreground.
+ </longdesc>
+ <shortdesc lang="en">
+ Keeps the notify tool running in the foreground.
+@@ -87,25 +94,102 @@ Specifies the length of sm-notify retry time (minutes).
+ <content type="integer" default="" />
+ </parameter>
+ 
+-<parameter name="nfs_shared_infodir" unique="0" required="1">
++<parameter name="nfs_ip" unique="0" required="0">
+ <longdesc lang="en">
+-The nfsserver resource agent will save nfs related information in this specific directory.
+-And this directory must be able to fail-over before nfsserver itself.
++Comma separated list of floating IP addresses used to access the nfs service
+ </longdesc>
+ <shortdesc lang="en">
+-Directory to store nfs server related information.
++IP addresses.
+ </shortdesc>
+-<content type="string" default="" />
++<content type="string"/>
+ </parameter>
+ 
+-<parameter name="nfs_ip" unique="0" required="1">
++<parameter name="nfsd_args" unique="0" required="0">
+ <longdesc lang="en">
+-Comma separated list of floating IP addresses used to access the nfs service
++Specifies what arguments to pass to the nfs daemon on startup. View the rpc.nfsd man page for information on what arguments are available.
++Note that setting this value will override all settings placed in the local /etc/sysconfig/nfs file.
+ </longdesc>
+ <shortdesc lang="en">
+-IP addresses.
++rpc.nfsd options
+ </shortdesc>
+-<content type="string"/>
++<content type="string" />
++</parameter>
++
++<parameter name="lockd_udp_port" unique="0" required="0">
++<longdesc lang="en">
++The udp port lockd should listen on.
++Note that setting this value will override all settings placed in the local /etc/sysconfig/nfs file.
++</longdesc>
++<shortdesc lang="en">
++lockd udp port
++</shortdesc>
++<content type="integer" />
++</parameter>
++
++<parameter name="lockd_tcp_port" unique="0" required="0">
++<longdesc lang="en">
++The tcp port lockd should listen on.
++Note that setting this value will override all settings placed in the local /etc/sysconfig/nfs file.
++</longdesc>
++<shortdesc lang="en">
++lockd tcp port
++</shortdesc>
++<content type="integer" />
++</parameter>
++
++<parameter name="statd_outgoing_port" unique="0" required="0">
++<longdesc lang="en">
++The source port number sm-notify uses when sending reboot notifications.
++Note that setting this value will override all settings placed in the local /etc/sysconfig/nfs file.
++</longdesc>
++<shortdesc lang="en">
++sm-notify source port
++</shortdesc>
++<content type="integer" />
++</parameter>
++
++<parameter name="statd_port" unique="0" required="0">
++<longdesc lang="en">
++The port number used for RPC listener sockets.
++Note that setting this value will override all settings placed in the local /etc/sysconfig/nfs file.
++</longdesc>
++<shortdesc lang="en">
++rpc.statd listener port
++</shortdesc>
++<content type="integer" />
++</parameter>
++
++<parameter name="mountd_port" unique="0" required="0">
++<longdesc lang="en">
++The port number used for rpc.mountd listener sockets.
++Note that setting this value will override all settings placed in the local /etc/sysconfig/nfs file.
++</longdesc>
++<shortdesc lang="en">
++rpc.mountd listener port
++</shortdesc>
++<content type="integer" />
++</parameter>
++
++<parameter name="rquotad_port" unique="0" required="0">
++<longdesc lang="en">
++The port number used for rpc.rquotad.
++Note that setting this value will override all settings placed in the local /etc/sysconfig/nfs file.
++</longdesc>
++<shortdesc lang="en">
++rpc.rquotad port
++</shortdesc>
++<content type="integer" />
++</parameter>
++
++<parameter name="nfs_shared_infodir" unique="0" required="0">
++<longdesc lang="en">
++The nfsserver resource agent will save nfs related information in this specific directory.
++And this directory must be able to fail-over before nfsserver itself.
++</longdesc>
++<shortdesc lang="en">
++Directory to store nfs server related information.
++</shortdesc>
++<content type="string" default="" />
+ </parameter>
+ 
+ <parameter name="rpcpipefs_dir" unique="0" required="0">
+@@ -228,6 +312,7 @@ set_exec_mode()
+ 	if which systemctl > /dev/null 2>&1; then
+ 		if systemctl list-unit-files | grep nfs-server > /dev/null && systemctl list-unit-files | grep nfs-lock > /dev/null; then
+ 			EXEC_MODE=2
++			# when using systemd, the nfs-lock service file handles nfsv3 locking daemons for us.
+ 			return 0
+ 		fi
+ 	fi
+@@ -236,33 +321,6 @@ set_exec_mode()
+ 	exit $OCF_ERR_INSTALLED
+ }
+ 
+-nfs_systemd_exec()
+-{
+-	local cmd=$1
+-	local server_res
+-	local lock_res
+-
+-	if [ "$cmd" = "stop" ]; then
+-		systemctl $cmd nfs-server.service
+-		server_res=$?
+-		systemctl $cmd nfs-lock.service
+-		lock_res=$?
+-	else
+-		systemctl $cmd nfs-lock.service
+-		lock_res=$?
+-		systemctl $cmd nfs-server.service
+-		server_res=$?
+-	fi
+-
+-	if [ $lock_res -ne $server_res ]; then
+-		# If one is running and the other isn't, or for whatever other reason
+-		# the return code's aren't the same, this is bad.
+-		ocf_log err "Systemd services nfs-lock and nfs-server are not in the same state after attempting $cmd command"
+-		return $OCF_ERR_GENERIC
+-	fi
+-	return $server_res
+-}
+-
+ ##
+ # wrapper for init script and systemd calls.
+ ##
+@@ -273,21 +331,45 @@ nfs_exec()
+ 
+ 	case $EXEC_MODE in 
+ 		1) ${OCF_RESKEY_nfs_init_script} $cmd;;
+-		2) nfs_systemd_exec $cmd;;
++		2) systemctl $cmd nfs-server.service
+ 	esac
+ }
+ 
++v3locking_exec()
++{
++	local cmd=$1
++	set_exec_mode
++
++	if [ $EXEC_MODE -eq 2 ]; then
++		systemctl $cmd nfs-lock.service
++	else 
++		case $cmd in
++			start) locking_start;;
++			stop) locking_stop;;
++			status) locking_status;;
++		esac
++	fi
++}
++
+ nfsserver_monitor ()
+ {
+ 	fn=`mktemp`
+ 	nfs_exec status > $fn 2>&1 
+ 	rc=$?
+-	ocf_log debug `cat $fn`
++	ocf_log debug "$(cat $fn)"
+ 	rm -f $fn
+ 
+-#Adapte LSB status code to OCF return code
++	#Adapte LSB status code to OCF return code
+ 	if [ $rc -eq 0 ]; then
+-		return $OCF_SUCCESS
++		# don't report success if nfs servers are up
++		# without locking daemons.
++		v3locking_exec "status"
++		rc=$?
++		if [ $rc -ne 0 ]; then
++			ocf_log error "NFS server is up, but the locking daemons are down"
++			rc=$OCF_ERR_GENERIC
++		fi
++		return $rc
+ 	elif [ $rc -eq 3 ]; then
+ 		return $OCF_NOT_RUNNING
+ 	else
+@@ -295,8 +377,71 @@ nfsserver_monitor ()
+ 	fi
+ }
+ 
++set_arg()
++{
++	local key="$1"
++	local value="$2"
++	local file="$3"
++
++	if [ -z "$value" ]; then
++		return
++	fi
++
++	echo "${key}=\"${value}\"" >> $file
++	export ${key}="${value}"
++}
++
++set_env_args()
++{
++	local tmpconfig=$(mktemp ${HA_RSCTMP}/nfsserver-tmp-XXXXX)
++	local statd_args
++
++	# nfsd args
++	set_arg "RPCNFSDARGS" "$OCF_RESKEY_nfsd_args" "$tmpconfig"
++
++	# mountd args
++	if [ -n "$OCF_RESKEY_mountd_port" ]; then
++		set_arg "RPCMOUNTDOPTS" "-p $OCF_RESKEY_mountd_port" "$tmpconfig"
++	fi
++
++	# statd args. we always want to perform the notify using sm-notify after
++	# both rpc.statd and the nfsd daemons are initialized
++	statd_args="--no-notify"
++	if [ -n "$OCF_RESKEY_statd_outgoing_port" ]; then
++		statd_args="$statd_args -o $OCF_RESKEY_statd_outgoing_port"
++	fi
++	if [ -n "$OCF_RESKEY_statd_port" ]; then
++		statd_args="$statd_args -p $OCF_RESKEY_statd_port"
++	fi
++	set_arg "STATDARG" "$statd_args" "$tmpconfig"
++
++	# lockd ports
++	set_arg "LOCKD_UDPPORT" "$OCF_RESKEY_lockd_udp_port" "$tmpconfig"
++	set_arg "LOCKD_TCPPORT" "$OCF_RESKEY_lockd_tcp_port" "$tmpconfig"
++
++	# rquotad_port
++	set_arg "RPCRQUOTADOPTS" "$OCF_RESKEY_rquotad_port" "$tmpconfig"
++
++	# override local nfs config. preserve previous local config though.
++	if [ -s $tmpconfig ]; then
++		cat $NFS_SYSCONFIG | grep -e "$NFS_SYSCONFIG_AUTOGEN_TAG"
++		if [ $? -ne 0 ]; then
++			# backup local nfs config if it doesn't have our HA autogen tag in it.
++			mv -f $NFS_SYSCONFIG $NFS_SYSCONFIG_LOCAL_BACKUP
++		fi
++		echo "# $NFS_SYSCONFIG_AUTOGEN_TAG" > $NFS_SYSCONFIG
++		echo "# local config backup stored here, '$NFS_SYSCONFIG_LOCAL_BACKUP'" >> $NFS_SYSCONFIG
++		cat $tmpconfig >> $NFS_SYSCONFIG
++	fi
++	rm -f $tmpconfig
++}
++
+ prepare_directory ()
+ {
++	if [ -z "$fp" ]; then
++		return
++	fi
++
+ 	[ -d "$fp" ] || mkdir -p $fp
+ 	[ -d "$rpcpipefs_make_dir" ] || mkdir -p $rpcpipefs_make_dir
+ 	[ -d "$fp/v4recovery" ] || mkdir -p $fp/v4recovery
+@@ -307,6 +452,12 @@ prepare_directory ()
+ 	[ -d "$fp/$STATD_DIR/sm.bak" ] || mkdir -p "$fp/$STATD_DIR/sm.bak"
+ 	[ -n "`id -u rpcuser`" -a "`id -g rpcuser`" ] && chown -R rpcuser.rpcuser "$fp/$STATD_DIR"
+ 
++	[ -f "$fp/etab" ] || touch "$fp/etab"
++	[ -f "$fp/xtab" ] || touch "$fp/xtab"
++	[ -f "$fp/rmtab" ] || touch "$fp/rmtab"
++
++	dd if=/dev/urandom of=$fp/$STATD_DIR/state bs=1 count=4 &> /dev/null
++	[ -n "`id -u rpcuser`" -a "`id -g rpcuser`" ] && chown rpcuser.rpcuser "$fp/$STATD_DIR/state"
+ 	[ $SELINUX_ENABLED -eq 0 ] && chcon -R "$SELINUX_LABEL" "$fp"
+ }
+ 
+@@ -321,6 +472,10 @@ is_bound ()
+ 
+ bind_tree ()
+ {
++	if [ -z "$fp" ]; then
++		return
++	fi
++
+ 	if is_bound /var/lib/nfs; then
+ 		ocf_log debug "$fp is already bound to /var/lib/nfs"
+ 		return 0
+@@ -339,25 +494,189 @@ unbind_tree ()
+ 	fi
+ }
+ 
++binary_status()
++{
++	local binary=$1
++	local pid
++
++	pid=$(pgrep ${binary})
++	case $? in
++		0)
++			echo "$pid"
++			return $OCF_SUCCESS;;
++		1)
++			return $OCF_NOT_RUNNING;;
++		*)
++			return $OCF_ERR_GENERIC;;
++	esac
++}
++
++locking_status()
++{
++	binary_status "rpc.statd" > /dev/null 2>&1
++}
++
++locking_start()
++{
++	local ret=$OCF_SUCCESS
++
++	ocf_log info "Starting rpc.statd."
++
++	rpc.statd $STATDARG
++
++	ret=$?
++	if [ $ret -ne 0 ]; then
++		ocf_log err "Failed to start rpc.statd"
++		return $ret
++	fi
++	touch /var/lock/subsys/nfslock
++
++	return $ret
++}
++
++terminate()
++{
++	declare pids
++	declare i=0
++
++	while : ; do
++		pids=$(binary_status $1)
++		[ -z "$pids" ] && return 0
++	 	kill $pids
++		sleep 1
++		((i++))
++		[ $i -gt 3 ] && return 1
++	done
++}
++
++
++killkill()
++{
++	declare pids
++	declare i=0
++
++	while : ; do
++		pids=$(binary_status $1)
++		[ -z "$pids" ] && return 0
++	 	kill -9 $pids
++		sleep 1
++		((i++))
++		[ $i -gt 3 ] && return 1
++	done
++}
++
++stop_process()
++{
++	declare process=$1
++
++	ocf_log info "Stopping $process"
++	if terminate $process; then
++		ocf_log debug "$process is stopped"
++	else
++		if killkill $process; then
++			ocf_log debug "$process is stopped"
++		else
++			ocf_log debug "Failed to stop $process"
++			return 1
++		fi
++	fi
++	return 0
++}
++
++locking_stop()
++{
++	ret=0
++
++	# sm-notify can prevent umount of /var/lib/nfs/statd if
++	# it is still trying to notify unresponsive clients.
++	stop_process sm-notify
++	if [ $? -ne 0 ]; then
++		ret=$OCF_ERR_GENERIC
++	fi
++
++	stop_process rpc.statd
++	if [ $? -ne 0 ]; then
++		ret=$OCF_ERR_GENERIC
++	fi
++
++	return $ret
++}
++
++notify_locks()
++{
++	if ocf_is_true "$OCF_RESKEY_nfs_no_notify"; then
++		# we've been asked not to notify clients
++		return;
++	fi
++
++	# run in foreground, if requested
++	if ocf_is_true "$OCF_RESKEY_nfs_notify_foreground"; then
++		opts="-d"
++	fi
++
++	if [ -n "$OCF_RESKEY_nfs_smnotify_retry_time" ]; then
++		opts="$opts -m $OCF_RESKEY_nfs_smnotify_retry_time"
++	fi
++
++	if [ -n "$OCF_RESKEY_statd_outgoing_port" ]; then
++		opts="$opts -p $OCF_RESKEY_statd_outgoing_port"
++	fi
++
++	# forces re-notificaiton regardless if notifies have already gone out
++	opts="$opts -f"
++
++	ocf_log info "executing sm-notify"
++	if [ -n "$OCF_RESKEY_nfs_ip" ]; then
++		for ip in `echo ${OCF_RESKEY_nfs_ip} | sed 's/,/ /g'`; do
++			cp -rpfn $STATD_PATH/sm.ha/* $STATD_PATH/  > /dev/null 2>&1
++			sm-notify $opts -v $ip
++		done
++	else
++		sm-notify $opts
++	fi
++}
++
+ nfsserver_start ()
+ {
++	local rc;
++
+ 	if nfsserver_monitor; then
+ 		ocf_log debug "NFS server is already started"
+ 		return $OCF_SUCCESS
+ 	fi
+ 
++	set_env_args
+ 	prepare_directory
+ 	bind_tree
+ 
++	# remove the sm-notify pid so sm-notify will be allowed to run again without requiring a reboot.
++	rm -f /var/run/sm-notify.pid
++	#
++	# Synchronize these before starting statd
++	#
++	cp -rpfn $STATD_PATH/sm.ha/* $STATD_PATH/ > /dev/null 2>&1
+ 	rm -rf $STATD_PATH/sm.ha/* > /dev/null 2>&1
+-	cp -rf $STATD_PATH/sm $STATD_PATH/sm.bak /var/lib/nfs/state $STATD_PATH/sm.ha > /dev/null 2>&1
++	cp -rpf $STATD_PATH/sm $STATD_PATH/sm.bak /var/lib/nfs/state $STATD_PATH/sm.ha > /dev/null 2>&1
+ 
+ 	ocf_log info "Starting NFS server ..."
+ 
++	# check to see if we need to start rpc.statd
++	v3locking_exec "status"
++	if [ $? -ne $OCF_SUCCESS ]; then
++		v3locking_exec "start"
++		rc=$?
++		if [ $rc -ne 0 ]; then
++			ocf_log error "Failed to start NFS server locking daemons"
++			return $rc
++		fi
++	else
++		ocf_log info "rpc.statd already up"
++	fi
++
+ 	fn=`mktemp`
+ 	nfs_exec start > $fn 2>&1
+ 	rc=$?
+-	ocf_log debug `cat $fn`
++	ocf_log debug "$(cat $fn)"
+ 	rm -f $fn
+ 
+ 	if [ $rc -ne 0 ]; then
+@@ -365,42 +684,7 @@ nfsserver_start ()
+ 		return $rc
+ 	fi	
+ 
+-	#Notify the nfs server has been moved or rebooted
+-	#The init script do that already, but with the hostname, which may be ignored by client
+-	#we have to do it again with the nfs_ip 
+-	local opts
+-
+-	case ${OCF_RESKEY_nfs_notify_cmd##*/} in 
+-	sm-notify)
+-		# run in foreground, if requested
+-		if ocf_is_true "$OCF_RESKEY_nfs_notify_foreground"; then
+-			opts="-d"
+-		fi
+-
+-		if [ -n "$OCF_RESKEY_nfs_smnotify_retry_time" ]; then
+-			opts="$opts -m $OCF_RESKEY_nfs_smnotify_retry_time"
+-		fi
+-
+-		opts="$opts -f -v"
+-		;;
+-
+-	rpc.statd)
+-		if ocf_is_true "$OCF_RESKEY_nfs_notify_foreground"; then
+-			opts="-F"
+-		fi
+-		opts="$opts -n"
+-		;;
+-
+-	esac
+-
+-	rm -rf $STATD_PATH/sm.ha.save > /dev/null 2>&1
+-	cp -rf $STATD_PATH/sm.ha $STATD_PATH/sm.ha.save > /dev/null 2>&1
+-	for ip in `echo ${OCF_RESKEY_nfs_ip} | sed 's/,/ /g'`; do
+-	  ${OCF_RESKEY_nfs_notify_cmd} $opts $ip -P $STATD_PATH/sm.ha
+-	  rm -rf $STATD_PATH/sm.ha > /dev/null 2>&1
+-	  cp -rf $STATD_PATH/sm.ha.save $STATD_PATH/sm.ha > /dev/null 2>&1
+-	done
+-
++	notify_locks
+ 
+ 	ocf_log info "NFS server started"
+ 	return $OCF_SUCCESS
+@@ -410,12 +694,23 @@ nfsserver_stop ()
+ {
+ 	ocf_log info "Stopping NFS server ..."
+ 
++	# backup the current sm state information to the ha folder before stopping.
++	# the ha folder will be synced after startup, restoring the statd client state
++	rm -rf $STATD_PATH/sm.ha/* > /dev/null 2>&1
++	cp -rpf $STATD_PATH/sm $STATD_PATH/sm.bak /var/lib/nfs/state $STATD_PATH/sm.ha > /dev/null 2>&1
++
+ 	fn=`mktemp`
+ 	nfs_exec stop > $fn 2>&1
+ 	rc=$?
+-	ocf_log debug `cat $fn`
++	ocf_log debug "$(cat $fn)"
+ 	rm -f $fn
+ 
++	v3locking_exec "stop"
++	if [ $? -ne 0 ]; then
++		ocf_log err "Failed to stop NFS locking daemons"
++		rc=$OCF_ERR_GENERIC
++	fi
++
+ 	if [ $rc -eq 0 ]; then
+ 		unbind_tree 
+ 		ocf_log info "NFS server stopped"
+@@ -433,13 +728,9 @@ nfsserver_validate ()
+ 	set_exec_mode
+ 	check_binary ${OCF_RESKEY_nfs_notify_cmd}
+ 
+-	if [ x = x"${OCF_RESKEY_nfs_ip}" ]; then
+-		ocf_log err "nfs_ip not set"
+-		exit $OCF_ERR_CONFIGURED
+-	fi
+ 
+-	if [ x = "x$OCF_RESKEY_nfs_shared_infodir" ]; then
+-		ocf_log err "nfs_shared_infodir not set"
++	if [ -n "$OCF_RESKEY_CRM_meta_clone" ] && [ -n "$OCF_RESKEY_nfs_shared_infodir" ]; then
++		ocf_log err "This RA does not support clone mode when a shared info directory is in use."
+ 		exit $OCF_ERR_CONFIGURED
+ 	fi
+ 
+@@ -461,11 +752,6 @@ nfsserver_validate ()
+ 	return $OCF_SUCCESS
+ }
+ 
+-if [ -n "$OCF_RESKEY_CRM_meta_clone" ]; then
+-	ocf_log err "THIS RA DO NOT SUPPORT CLONE MODE!"
+-	exit $OCF_ERR_CONFIGURED
+-fi
+-
+ nfsserver_validate
+ 
+ case $__OCF_ACTION in
+-- 
+1.8.4.2
+

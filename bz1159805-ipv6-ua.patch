@@ -1,0 +1,75 @@
+nary files resource-agents-3.9.5-custom/heartbeat/.send_ua.c.swp and resource-agents-3.9.5-custom.new/heartbeat/.send_ua.c.swp differ
+diff -pruN resource-agents-3.9.5-custom/rgmanager/src/resources/ip.sh resource-agents-3.9.5-custom.new/rgmanager/src/resources/ip.sh
+--- resource-agents-3.9.5-custom/rgmanager/src/resources/ip.sh	2014-11-28 13:09:18.115125941 +0000
++++ resource-agents-3.9.5-custom.new/rgmanager/src/resources/ip.sh	2014-11-28 09:08:30.533429615 +0000
+@@ -28,6 +28,8 @@ LANG=C
+ PATH=/bin:/sbin:/usr/bin:/usr/sbin
+ export LC_ALL LANG PATH
+ 
++SENDUA=/usr/libexec/heartbeat/send_ua
++
+ # Grab nfs lock tricks if available
+ export NFS_TRICKS=1
+ if [ -f "$(dirname $0)/svclib_nfslock" ]; then
+@@ -637,19 +639,13 @@ ipv6()
+ 		/sbin/ip -f inet6 addr $1 dev $dev $addr
+ 		[ $? -ne 0 ] && return 1
+ 		
+-		#
+-		# NDP should take of figuring out our new address.  Plus,
+-		# we do not have something (like arping) to do this for ipv6
+-		# anyway.
+-		# 
+-		# RFC 2461, section 7.2.6 states thusly:
+-		#
+-	   	# Note that because unsolicited Neighbor Advertisements do not
+-		# reliably update caches in all nodes (the advertisements might
+-		# not be received by all nodes), they should only be viewed as
+-		# a performance optimization to quickly update the caches in
+-		#  most neighbors. 
+-		#
++
++		if [ "$1" = "add" ]; then
++			# Try to send Unsolicited Neighbor Advertisements if send_ua is available
++			if [ -x $SENDUA ]; then
++				run_send_ua $dev ${addr%%/*} $maskbits
++			fi
++		fi
+ 		
+ 		# Not sure if this is necessary for ipv6 either.
+ 		file=$(which rdisc 2>/dev/null)
+@@ -666,6 +662,33 @@ ipv6()
+ 	return 1
+ }
+ 
++#
++# Run send_ua to note send ICMPv6 Unsolicited Neighbor Advertisements.
++# Based on heartbeat's IPaddr2
++# Parameters : device address maskbits
++# 
++run_send_ua() {
++
++	local i dev=$1 addr=$2 maskbits=$3
++
++	# Wait until the allocated IPv6 address gets ready by checking
++	# "tentative" flag is disappeared, otherwise send_ua can not
++	# send the unsolicited advertisement requests.
++        for i in 1 2 3 4 5; do
++                if [ $(/sbin/ip -o -f inet6 addr show dev $dev to $addr tentative | wc -l) -eq 0 ]; then
++                        break
++                fi
++                if [ $i -eq 5 ]; then
++                        ocf_log warn "$addr still has 'tentative' status. (ignored)"
++                        break
++                fi
++                sleep 1
++        done
++	# ARGS based on IPaddr2's default (arp_interval & arp_count)
++	ARGS="-i 200 -c 5 $addr $maskbits $dev"
++	ocf_log info "$SENDUA $ARGS"
++	$SENDUA $ARGS || ocf_log err "Could not send ICMPv6 Unsolicited Neighbor Advertisements."
++}
+ 
+ #
+ # Add an IP address to our interface.
+Binary files resource-agents-3.9.5-custom/rgmanager/src/resources/.ip.sh.swp and resource-agents-3.9.5-custom.new/rgmanager/src/resources/.ip.sh.swp differ

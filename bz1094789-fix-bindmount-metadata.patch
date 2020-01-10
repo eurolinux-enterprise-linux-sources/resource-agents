@@ -1,0 +1,13 @@
+diff --git a/rgmanager/src/resources/bind-mount.sh b/rgmanager/src/resources/bind-mount.sh
+index b9b32ee..47bcccb 100755
+--- a/rgmanager/src/resources/bind-mount.sh
++++ b/rgmanager/src/resources/bind-mount.sh
+@@ -37,7 +37,7 @@ export OCF_RESKEY_options="bind"
+ export OCF_RESKEY_device="$OCF_RESKEY_source"
+ rv=0
+ 
+-do_meta_data()
++do_metadata()
+ {
+ 	cat <<EOT
+ <?xml version="1.0" ?>

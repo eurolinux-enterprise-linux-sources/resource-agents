@@ -1,0 +1,36 @@
+From 2db35fa4857b21f51db6f38f37f3b11d4de21646 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Thu, 8 May 2014 14:43:14 -0500
+Subject: [PATCH] High: fs-lib.sh: Force kill processes with access to shared
+ libraries on mount point
+
+---
+ rgmanager/src/resources/utils/fs-lib.sh | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/rgmanager/src/resources/utils/fs-lib.sh b/rgmanager/src/resources/utils/fs-lib.sh
+index 2697ed2..7a9e694 100644
+--- a/rgmanager/src/resources/utils/fs-lib.sh
++++ b/rgmanager/src/resources/utils/fs-lib.sh
+@@ -260,6 +260,7 @@ strip_trailing_slashes()
+ kill_procs_using_mount () {
+ 	declare mp
+ 	declare procs
++	declare mmap_procs
+ 
+ 	if [ $# -lt 1 -o -z "$1" ]; then
+ 		ocf_log err "Usage: kill_procs_using_mount mount_point [signal]"
+@@ -277,6 +278,10 @@ kill_procs_using_mount () {
+ 	# anything held open in mount point after the slash
+ 	procs=$(find /proc/[0-9]*/ -type l -lname "${mp}/*" -or -lname "${mp}" 2>/dev/null | awk -F/ '{print $3}' | uniq)
+ 
++	# anything with memory mapping to something in the mountpoint
++	mmap_procs=$(grep " ${mp}" /proc/[0-9]*/maps | awk -F/ '{print $3}' | uniq)
++	procs=$(echo -e "${procs}\n${mmap_procs}" | sort | uniq)
++
+ 	for pid in $procs; do
+ 		if [ -n "$2" ]; then
+ 			kill -s $2 $pid
+-- 
+1.8.4.2
+

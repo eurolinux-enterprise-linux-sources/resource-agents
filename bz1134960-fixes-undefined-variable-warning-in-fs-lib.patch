@@ -1,0 +1,27 @@
+From 685fbef5bb48c5f18a716fc2cf3bb24c3e72b874 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 19 Jan 2015 14:16:16 -0600
+Subject: [PATCH 3/6] bz1134960 fixes undefined variable warning in fs-lib.sh
+
+---
+ rgmanager/src/resources/utils/fs-lib.sh | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/rgmanager/src/resources/utils/fs-lib.sh b/rgmanager/src/resources/utils/fs-lib.sh
+index 1851e22..8e12bd8 100644
+--- a/rgmanager/src/resources/utils/fs-lib.sh
++++ b/rgmanager/src/resources/utils/fs-lib.sh
+@@ -27,6 +27,10 @@ LANG=C
+ PATH=/bin:/sbin:/usr/bin:/usr/sbin
+ export LC_ALL LANG PATH
+ 
++# Define this value to 0 by default, bind-mount.sh or any other agent
++# that uses this value will alter it after sourcing fs-lib.sh
++export IS_BIND_MOUNT=0
++
+ # Private return codes
+ FAIL=2
+ NO=1
+-- 
+1.8.4.2
+

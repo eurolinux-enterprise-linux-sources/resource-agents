@@ -1,0 +1,31 @@
+From a2bfceb576b0196c1fcd02ceb347fb113b3a55f9 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 19 Jan 2015 14:47:10 -0600
+Subject: [PATCH 6/6] bz1173128 handle nfs path ending in / correctly
+
+---
+ rgmanager/src/resources/nfsserver.sh | 5 +++++
+ 1 file changed, 5 insertions(+)
+ mode change 100755 => 100644 rgmanager/src/resources/nfsserver.sh
+
+diff --git a/rgmanager/src/resources/nfsserver.sh b/rgmanager/src/resources/nfsserver.sh
+old mode 100755
+new mode 100644
+index 39904b6..3f664af
+--- a/rgmanager/src/resources/nfsserver.sh
++++ b/rgmanager/src/resources/nfsserver.sh
+@@ -23,6 +23,11 @@ if [ $SELINUX_ENABLED ]; then
+ 	export SELINUX_LABEL="$(ls -ldZ /var/lib/nfs/statd | cut -f4 -d' ')"
+ fi
+ 
++# strip trailing / off so pattern matching will work consistently.
++while [ "${OCF_RESKEY_path#${OCF_RESKEY_path%?}}" = "/" ]
++do
++	OCF_RESKEY_path="${OCF_RESKEY_path%/}"
++done
+ 
+ log_do()
+ {
+-- 
+1.8.4.2
+

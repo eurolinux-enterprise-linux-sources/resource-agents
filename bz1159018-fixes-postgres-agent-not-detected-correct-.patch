@@ -1,0 +1,26 @@
+From 6f1bed51b764b5b7420a32583ab3eb5abefad0bf Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 19 Jan 2015 14:45:32 -0600
+Subject: [PATCH 5/6] bz1159018 fixes postgres agent not detected correct user
+ group
+
+---
+ rgmanager/src/resources/postgres-8.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/rgmanager/src/resources/postgres-8.sh b/rgmanager/src/resources/postgres-8.sh
+index 77bffb2..76c22dd 100755
+--- a/rgmanager/src/resources/postgres-8.sh
++++ b/rgmanager/src/resources/postgres-8.sh
+@@ -137,7 +137,7 @@ start()
+ 	# change it to be owned by the postgres user so that
+ 	# postmaster doesn't complain.
+ 	#
+-	pguser_group=`groups $OCF_RESKEY_postmaster_user | cut -f1 -d ' '`
++	pguser_group=`groups $OCF_RESKEY_postmaster_user | cut -f3 -d ' '`
+ 	touch $PSQL_pid_file
+ 	chown $OCF_RESKEY_postmaster_user.$pguser_group $PSQL_pid_file
+ 
+-- 
+1.8.4.2
+

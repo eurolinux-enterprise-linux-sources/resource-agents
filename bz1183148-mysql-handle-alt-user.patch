@@ -1,0 +1,40 @@
+From 8313404cf0ab568c2c996d95bfe60f0ba04715b3 Mon Sep 17 00:00:00 2001
+From: John Ruemker <john.ruemker@gmail.com>
+Date: Mon, 19 Jan 2015 12:59:04 -0500
+Subject: [PATCH] mysql.sh: Allow MySQL to run as user other than mysql
+
+---
+ rgmanager/src/resources/mysql.sh | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/rgmanager/src/resources/mysql.sh b/rgmanager/src/resources/mysql.sh
+index c7a7723..736a91a 100755
+--- a/rgmanager/src/resources/mysql.sh
++++ b/rgmanager/src/resources/mysql.sh
+@@ -68,6 +68,8 @@ verify_all()
+ 
+ start()
+ {
++	declare username=""
++
+         if status; then
+                 ocf_log info "Starting Service $OCF_RESOURCE_INSTANCE > Already running"
+                 return $OCF_SUCCESS
+@@ -75,7 +77,13 @@ start()
+ 
+ 	clog_service_start $CLOG_INIT
+ 
+-	create_pid_directory
++	# Pull out the user name from the options argument if it is set.
++	# We need this to properly set the pidfile permissions
++	if [ -n "$OCF_RESKEY_mysqld_options" ]; then
++		username=$(echo "$OCF_RESKEY_mysqld_options" | sed -n -e 's/^.*--user=\(\S*\)[[:space:]]*.*$/\1/p;s/^.*-u[[:space:]]*\(\S*\)[[:space:]]*.*$/\1/p')
++	fi
++
++	create_pid_directory "$username"
+ 	check_pid_file "$MYSQL_pid_file"
+ 
+ 	if [ $? -ne 0 ]; then
+-- 
+1.8.4.2
+

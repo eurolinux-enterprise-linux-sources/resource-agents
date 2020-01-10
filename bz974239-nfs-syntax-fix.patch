@@ -1,0 +1,32 @@
+From 68d29cb6742c55622bf309e8258e044d25838e1f Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Fri, 13 Jun 2014 13:56:04 -0500
+Subject: [PATCH] Low: nfsserver.sh: fixes syntax error in rgmanager's
+ nfsserver.sh agent
+
+---
+ rgmanager/src/resources/nfsserver.sh | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/rgmanager/src/resources/nfsserver.sh b/rgmanager/src/resources/nfsserver.sh
+index 157e01a..41e941e 100755
+--- a/rgmanager/src/resources/nfsserver.sh
++++ b/rgmanager/src/resources/nfsserver.sh
+@@ -426,12 +426,12 @@ stop_locking()
+ 	# sm-notify can prevent umount of /var/lib/nfs/statd if
+ 	# it is still trying to notify unresponsive clients.
+ 	stop_process sm-notify
+-	if [ $? -ne 0]; then
++	if [ $? -ne 0 ]; then
+ 		ret=1
+ 	fi
+ 
+ 	stop_process rpc.statd
+-	if [ $? -ne 0]; then
++	if [ $? -ne 0 ]; then
+ 		ret=1
+ 	fi
+ 
+-- 
+1.8.4.2
+

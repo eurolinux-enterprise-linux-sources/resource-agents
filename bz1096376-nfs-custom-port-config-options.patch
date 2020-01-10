@@ -1,0 +1,187 @@
+From 27819a1e0919ae82ec21d780eac877a259ec9269 Mon Sep 17 00:00:00 2001
+From: David Vossel <dvossel@redhat.com>
+Date: Mon, 19 Jan 2015 14:10:50 -0600
+Subject: [PATCH 1/6] bz1096376 nfs custom port config options
+
+---
+ heartbeat/nfsserver | 59 ++++++++++++++++++++++++++++++++++-------------------
+ 1 file changed, 38 insertions(+), 21 deletions(-)
+
+diff --git a/heartbeat/nfsserver b/heartbeat/nfsserver
+index d84f2be..6a51731 100755
+--- a/heartbeat/nfsserver
++++ b/heartbeat/nfsserver
+@@ -331,7 +331,7 @@ nfs_exec()
+ 
+ 	case $EXEC_MODE in 
+ 		1) ${OCF_RESKEY_nfs_init_script} $cmd;;
+-		2) systemctl $cmd nfs-server.service
++		2) systemctl $cmd nfs-server.service ;;
+ 	esac
+ }
+ 
+@@ -366,7 +366,7 @@ nfsserver_monitor ()
+ 		v3locking_exec "status"
+ 		rc=$?
+ 		if [ $rc -ne 0 ]; then
+-			ocf_log error "NFS server is up, but the locking daemons are down"
++			ocf_log err "NFS server is up, but the locking daemons are down"
+ 			rc=$OCF_ERR_GENERIC
+ 		fi
+ 		return $rc
+@@ -382,12 +382,20 @@ set_arg()
+ 	local key="$1"
+ 	local value="$2"
+ 	local file="$3"
++	local requires_sysconfig="$4"
+ 
+ 	if [ -z "$value" ]; then
+ 		return
+ 	fi
+ 
+-	echo "${key}=\"${value}\"" >> $file
++	# only write to the tmp /etc/sysconfig/nfs if sysconfig exists.
++	# otherwise this distro does not support setting these options.
++	if [ -d "/etc/sysconfig" ]; then
++		echo "${key}=\"${value}\"" >> $file
++	elif [ "$requires_sysconfig" = "true" ]; then
++		ocf_log warn "/etc/sysconfig/nfs not found, unable to set port and nfsd args."
++	fi
++
+ 	export ${key}="${value}"
+ }
+ 
+@@ -397,11 +405,11 @@ set_env_args()
+ 	local statd_args
+ 
+ 	# nfsd args
+-	set_arg "RPCNFSDARGS" "$OCF_RESKEY_nfsd_args" "$tmpconfig"
++	set_arg "RPCNFSDARGS" "$OCF_RESKEY_nfsd_args" "$tmpconfig" "true"
+ 
+ 	# mountd args
+ 	if [ -n "$OCF_RESKEY_mountd_port" ]; then
+-		set_arg "RPCMOUNTDOPTS" "-p $OCF_RESKEY_mountd_port" "$tmpconfig"
++		set_arg "RPCMOUNTDOPTS" "-p $OCF_RESKEY_mountd_port" "$tmpconfig" "true"
+ 	fi
+ 
+ 	# statd args. we always want to perform the notify using sm-notify after
+@@ -413,14 +421,16 @@ set_env_args()
+ 	if [ -n "$OCF_RESKEY_statd_port" ]; then
+ 		statd_args="$statd_args -p $OCF_RESKEY_statd_port"
+ 	fi
+-	set_arg "STATDARG" "$statd_args" "$tmpconfig"
++	set_arg "STATDARG" "$statd_args" "$tmpconfig" "false"
+ 
+ 	# lockd ports
+-	set_arg "LOCKD_UDPPORT" "$OCF_RESKEY_lockd_udp_port" "$tmpconfig"
+-	set_arg "LOCKD_TCPPORT" "$OCF_RESKEY_lockd_tcp_port" "$tmpconfig"
++	set_arg "LOCKD_UDPPORT" "$OCF_RESKEY_lockd_udp_port" "$tmpconfig" "true"
++	set_arg "LOCKD_TCPPORT" "$OCF_RESKEY_lockd_tcp_port" "$tmpconfig" "true"
+ 
+ 	# rquotad_port
+-	set_arg "RPCRQUOTADOPTS" "$OCF_RESKEY_rquotad_port" "$tmpconfig"
++	if [ -n "$OCF_RESKEY_rquotad_port" ]; then
++		set_arg "RPCRQUOTADOPTS" "-p $OCF_RESKEY_rquotad_port" "$tmpconfig" "true"
++	fi
+ 
+ 	# override local nfs config. preserve previous local config though.
+ 	if [ -s $tmpconfig ]; then
+@@ -450,13 +460,14 @@ prepare_directory ()
+ 	[ -d "$fp/$STATD_DIR/sm" ] || mkdir -p "$fp/$STATD_DIR/sm"
+ 	[ -d "$fp/$STATD_DIR/sm.ha" ] || mkdir -p "$fp/$STATD_DIR/sm.ha"
+ 	[ -d "$fp/$STATD_DIR/sm.bak" ] || mkdir -p "$fp/$STATD_DIR/sm.bak"
+-	[ -n "`id -u rpcuser`" -a "`id -g rpcuser`" ] && chown -R rpcuser.rpcuser "$fp/$STATD_DIR"
++	[ -n "`id -u rpcuser 2>/dev/null`" -a "`id -g rpcuser 2>/dev/null`" ] &&
++		chown -R rpcuser.rpcuser "$fp/$STATD_DIR"
+ 
+ 	[ -f "$fp/etab" ] || touch "$fp/etab"
+ 	[ -f "$fp/xtab" ] || touch "$fp/xtab"
+ 	[ -f "$fp/rmtab" ] || touch "$fp/rmtab"
+ 
+-	dd if=/dev/urandom of=$fp/$STATD_DIR/state bs=1 count=4 &> /dev/null
++	dd if=/dev/urandom of=$fp/$STATD_DIR/state bs=1 count=4 >/dev/null 2>&1
+ 	[ -n "`id -u rpcuser`" -a "`id -g rpcuser`" ] && chown rpcuser.rpcuser "$fp/$STATD_DIR/state"
+ 	[ $SELINUX_ENABLED -eq 0 ] && chcon -R "$SELINUX_LABEL" "$fp"
+ }
+@@ -536,15 +547,15 @@ locking_start()
+ 
+ terminate()
+ {
+-	declare pids
+-	declare i=0
++	local pids
++	local i=0
+ 
+ 	while : ; do
+ 		pids=$(binary_status $1)
+ 		[ -z "$pids" ] && return 0
+ 	 	kill $pids
+ 		sleep 1
+-		((i++))
++		i=$((i + 1))
+ 		[ $i -gt 3 ] && return 1
+ 	done
+ }
+@@ -552,22 +563,22 @@ terminate()
+ 
+ killkill()
+ {
+-	declare pids
+-	declare i=0
++	local pids
++	local i=0
+ 
+ 	while : ; do
+ 		pids=$(binary_status $1)
+ 		[ -z "$pids" ] && return 0
+ 	 	kill -9 $pids
+ 		sleep 1
+-		((i++))
++		i=$((i + 1))
+ 		[ $i -gt 3 ] && return 1
+ 	done
+ }
+ 
+ stop_process()
+ {
+-	declare process=$1
++	local process=$1
+ 
+ 	ocf_log info "Stopping $process"
+ 	if terminate $process; then
+@@ -660,13 +671,19 @@ nfsserver_start ()
+ 
+ 	ocf_log info "Starting NFS server ..."
+ 
++	# mounts /proc/fs/nfsd for us
++	lsmod | grep -q nfsd
++	if [ $? -ne 0 ]; then
++		modprobe nfsd
++	fi
++
+ 	# check to see if we need to start rpc.statd
+ 	v3locking_exec "status"
+ 	if [ $? -ne $OCF_SUCCESS ]; then
+ 		v3locking_exec "start"
+ 		rc=$?
+ 		if [ $rc -ne 0 ]; then
+-			ocf_log error "Failed to start NFS server locking daemons"
++			ocf_log err "Failed to start NFS server locking daemons"
+ 			return $rc
+ 		fi
+ 	else
+@@ -714,9 +731,9 @@ nfsserver_stop ()
+ 	if [ $rc -eq 0 ]; then
+ 		unbind_tree 
+ 		ocf_log info "NFS server stopped"
+-		return $OCF_SUCCESS
++	else 
++		ocf_log err "Failed to stop NFS server"
+ 	fi
+-	ocf_log err "Failed to stop NFS server"
+ 	return $rc
+ }
+ 
+-- 
+1.8.4.2
+
