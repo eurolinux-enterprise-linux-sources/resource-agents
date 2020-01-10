@@ -37,7 +37,7 @@
 Name:		resource-agents
 Summary:	Open Source HA Reusable Cluster Resource Scripts
 Version:	3.9.5
-Release:	34%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.3
+Release:	46%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}
 License:	GPLv2+ and LGPLv2+
 URL:		http://to.be.defined.com/
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
@@ -99,9 +99,26 @@ Patch48:	bz1272587.patch
 Patch49: 	bz1302545-portblock.patch
 Patch50:	bz1086838-oracle-data-guard.patch
 Patch51:	bz1311963-rgmanager-fix-clumanager-statd-ownership.patch
-Patch52:	bz1329547-tickle_tcp-fix.patch
-Patch53:	bz1413096-1-update-saphana-saphanatopology.patch
-Patch54:	bz1413096-2-update-saphana-saphanatopology.patch
+Patch52: 	bz1327662-1-portblock-tickle_tcp-fix.patch
+Patch53: 	bz1260710-1-sapdatabase-process-count-suser.patch
+Patch54: 	bz1260710-2-sapdatabase-process-count-suser.patch
+Patch55: 	bz1358892-oracle-fix-monprofile.patch
+Patch56: 	bz1351717-send_arp-fix-buffer-overflow-on-infiniband.patch
+Patch57: 	bz1337146-mysql-use-replication_port-parameter.patch
+Patch58: 	bz1374655-1-oracle-monprofile-container-databases.patch
+Patch59: 	bz1374655-2-oracle-monprofile-container-databases.patch
+Patch60: 	bz1374655-3-oracle-monprofile-container-databases.patch
+Patch61: 	bz1320520-lvm.sh-fix-status-clustered.patch
+Patch62: 	bz1286291-netfs.sh-move-defaults-to-metadata.patch
+Patch63: 	bz1381891-1-update-saphana-saphanatopology.patch
+Patch64: 	bz1382036-nfsserver-rpcpipefs_dir.patch
+Patch65: 	bz1386187-delay-change-startdelay.patch
+Patch66: 	bz1332909-1-LVM-partial_activation-fix.patch
+Patch67: 	bz1381891-2-update-saphana-saphanatopology.patch
+Patch68: 	bz1327662-2-portblock-create-tickle_dir.patch
+Patch69: 	bz1406843-exportfs-ipv6-fix.patch
+Patch70: 	bz1318240-oracle-fix-unable-to-start-because-of-ORA-01081.patch
+Patch71: 	bz1332909-2-LVM-partial_activation-fix.patch
 
 Obsoletes:	heartbeat-resources <= %{version}
 Provides:	heartbeat-resources = %{version}
@@ -142,7 +159,7 @@ BuildRequires:  libxslt docbook_4 docbook-xsl-stylesheets
 %if %{with rgmanager}
 # system tools shared by several agents
 Requires: /bin/bash /bin/grep /bin/sed /bin/gawk
-Requires: /bin/ps /usr/bin/pkill /bin/hostname
+Requires: /bin/ps /usr/bin/pkill /bin/hostname /bin/netstat
 Requires: /sbin/fuser
 Requires: /sbin/findfs /bin/mount
 
@@ -273,6 +290,23 @@ exit 1
 %patch52 -p1
 %patch53 -p1
 %patch54 -p1
+%patch55 -p1
+%patch56 -p1
+%patch57 -p1
+%patch58 -p1
+%patch59 -p1
+%patch60 -p1 -F2
+%patch61 -p1
+%patch62 -p1
+%patch63 -p1
+%patch64 -p1
+%patch65 -p1
+%patch66 -p1 -F1
+%patch67 -p1
+%patch68 -p1
+%patch69 -p1
+%patch70 -p1
+%patch71 -p1 -F1
 
 %build
 ./autogen.sh
@@ -535,15 +569,65 @@ ccs_update_schema > /dev/null 2>&1 ||:
 
 
 %changelog
-* Mon Jan 16 2017 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-34.3
+* Fri Jan 27 2017 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-46
+- LVM: fix for "partial vg activates when partial_activation=false"
+
+  Resolves: rhbz#1332909
+
+* Tue Jan 10 2017 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-43
+- oracle: fix unable to start because of ORA-01081
+
+  Resolves: rhbz#1318240
+
+* Thu Dec 22 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-42
+- exportfs: fix for IPv6 addresses
+
+  Resolves: rhbz#1406843
+
+* Mon Dec 19 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-41
+- portblock: create tickle_dir if it doesnt exist
+
+  Resolves: rhbz#1327662
+
+* Thu Nov 17 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-40
 - SAPHana/SAPHanaTopology: update to version 0.152.17
+- Add netstat dependency
 
-  Resolves: rhbz#1413096
+  Resolves: rhbz#1381891
+  Resolves: rhbz#1395594
 
-* Mon Apr 25 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-34.2
+* Tue Oct 25 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-38
+- Delay: change startdelay default to avoid timeout before starting
+
+  Resolves: rhbz#1386187
+
+* Fri Oct 14 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-37
+- lvm.sh: fix status clustered to check specific volume
+- netfs.sh: move defaults to metadata
+- nfsserver: use rpcpipefs_dir variable
+
+  Resolves: rhbz#1320520
+  Resolves: rhbz#1286291
+  Resolves: rhbz#1382036
+
+* Mon Sep 12 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-36
+- SAPDatabase: fix process count for SUSER
+- oracle: use monprofile parameter
+- send_arp: fix buffer overflow on infiniband devices
+- mysql: use replication_port variable
+- oracle: inform user that monprofile monuser must start with C##
+  for container databases
+
+  Resolves: rhbz#1260710
+  Resolves: rhbz#1358892
+  Resolves: rhbz#1351717
+  Resolves: rhbz#1337146
+  Resolves: rhbz#1374655
+
+* Wed Apr 20 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-35
 - tickle_tcp: fix "Failed to open raw socket (Invalid argument)" issue
 
-  Resolves: rhbz#1329547
+  Resolves: rhbz#1327662
 
 * Thu Feb 25 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-34
 - rgmanager: fix .clumanager/statd ownership in fs.sh and clusterfs.sh

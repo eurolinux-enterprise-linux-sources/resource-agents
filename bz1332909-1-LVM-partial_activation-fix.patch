@@ -1,0 +1,22 @@
+From a690ab0d79396ed80bad009c5c234d610e349a29 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Tue, 8 Nov 2016 13:37:09 +0100
+Subject: [PATCH] LVM: add error messages for partial_activation
+
+---
+ heartbeat/LVM | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/LVM b/heartbeat/LVM
+index 49ebce8..75cd6fa 100755
+--- a/heartbeat/LVM
++++ b/heartbeat/LVM
+@@ -548,7 +548,7 @@ LVM_validate_all() {
+ 		# "unknown device" then another node may have marked a device missing 
+ 		# where we have access to all of them and can start without issue. 
+ 		if vgs -o pv_attr --noheadings $OCF_RESKEY_volgrpname 2>/dev/null | grep 'm' > /dev/null 2>&1; then
+-			if vgs -o pv_name --noheadings $OCF_RESKEY_volgrpname 2>/dev/null | grep 'unknown device' > /dev/null 2>&1; then
++			if vgs -o pv_name --noheadings $OCF_RESKEY_volgrpname 2>/dev/null | grep -E "unknown device|Couldn't find device|Device mismatch detected" > /dev/null 2>&1; then
+ 				if ! ocf_is_true "$OCF_RESKEY_partial_activation" ; then
+ 					# We are missing devices and cannot activate partially
+ 					ocf_exit_reason "Volume group [$VOLUME] has devices missing.  Consider partial_activation=true to attempt to activate partially"

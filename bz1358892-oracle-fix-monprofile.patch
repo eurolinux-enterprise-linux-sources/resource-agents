@@ -1,0 +1,22 @@
+From 5f1088e7e6b7d15e6615d57dcf77834df9ded690 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 22 Jul 2016 10:39:59 +0200
+Subject: [PATCH] oracle: fix MONPROFILE to use monprofile parameter when set
+
+---
+ heartbeat/oracle | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/oracle b/heartbeat/oracle
+index d68fa6e..e8e6148 100755
+--- a/heartbeat/oracle
++++ b/heartbeat/oracle
+@@ -755,7 +755,7 @@ PROCS_CLEANUP_TIME="30"
+ 
+ MONUSR=${OCF_RESKEY_monuser:-$OCF_RESKEY_monuser_default}
+ MONPWD=${OCF_RESKEY_monpassword:-$OCF_RESKEY_monpassword_default}
+-MONPROFILE=${OCF_RESKEY_monprofile_default:-$OCF_RESKEY_monprofile_default}
++MONPROFILE=${OCF_RESKEY_monprofile:-$OCF_RESKEY_monprofile_default}
+ 
+ MONUSR=$(echo $MONUSR | awk '{print toupper($0)}')
+ MONPROFILE=$(echo $MONPROFILE | awk '{print toupper($0)}')

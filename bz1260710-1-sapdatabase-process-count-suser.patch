@@ -1,0 +1,135 @@
+From fe55f9b909d81a0093dbfb1f00083706cf5d2cf1 Mon Sep 17 00:00:00 2001
+From: Alexander Krauth <alexander.krauth@basf.com>
+Date: Fri, 19 Feb 2016 18:00:58 +0100
+Subject: [PATCH] High: SAPDatabase: Add support for Oracle 12c
+
+To work with Oracle 12c the agent needs an option
+to pass the new Database Username to the resource.
+
+Example configuration:
+
+primitive oracle-database SAPDatabase \
+    params \
+        SID=HAO \
+        DBTYPE=ORA \
+        DBOUSER=oracle \
+        STRICT_MONITORING=1 \
+    op monitor interval=120 timeout=60
+---
+ heartbeat/SAPDatabase | 12 +++++++++++-
+ heartbeat/sapdb.sh    | 35 ++++++++++++++++++++++++++---------
+ 2 files changed, 37 insertions(+), 10 deletions(-)
+
+diff --git a/heartbeat/SAPDatabase b/heartbeat/SAPDatabase
+index de7959f..641bd40 100755
+--- a/heartbeat/SAPDatabase
++++ b/heartbeat/SAPDatabase
+@@ -18,6 +18,7 @@
+ #       OCF_RESKEY_DIR_EXECUTABLE      (optional, well known directories will be searched by default)
+ #       OCF_RESKEY_DBTYPE              (mandatory, one of the following values: ORA,ADA,DB6,SYB,HDB)
+ #       OCF_RESKEY_DBINSTANCE          (optional, Database instance name, if not equal to SID)
++#       OCF_RESKEY_DBOSUSER            (optional, the Linux user that owns the database processes on operating system level)
+ #       OCF_RESKEY_STRICT_MONITORING   (optional, activate application level monitoring - with Oracle a failover will occur in case of an archiver stuck)
+ #       OCF_RESKEY_AUTOMATIC_RECOVER   (optional, automatic startup recovery, default is false)
+ #       OCF_RESKEY_MONITOR_SERVICES    (optional, default is to monitor all database services)
+@@ -69,7 +70,7 @@ meta_data() {
+ <?xml version="1.0"?>
+ <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+ <resource-agent name="SAPDatabase">
+-<version>2.06</version>
++<version>2.14</version>
+ 
+ <shortdesc lang="en">Manages a SAP database instance as an HA resource.</shortdesc>
+ <longdesc lang="en">
+@@ -115,6 +116,11 @@ Usually you can leave this empty. Then the default: /usr/sap/hostctrl/exe is use
+   <shortdesc lang="en">Database instance name, if not equal to SID</shortdesc>
+   <content type="string" default="" />
+  </parameter>
++ <parameter name="DBOSUSER" unique="1" required="0">
++  <longdesc lang="en">The parameter can be set, if the database processes on operating system level are not executed with the default user of the used database type. Defaults: ADA=taken from /etc/opt/sdb, DB6=db2SID, ORA=oraSID and oracle, SYB=sybSID, HDB=SIDadm</longdesc>
++  <shortdesc lang="en">the Linux user that owns the database processes on operating system level</shortdesc>
++  <content type="string" default="" />
++ </parameter>
+  <parameter name="NETSERVICENAME" unique="0" required="0">
+   <longdesc lang="en">Deprecated - do not use anymore. This parameter will be deleted in one of the next releases.</longdesc>
+   <shortdesc lang="en">deprecated - do not use anymore</shortdesc>
+@@ -305,6 +311,10 @@ DBTYPE=`echo "$OCF_RESKEY_DBTYPE" | tr '[:lower:]' '[:upper:]'`
+ if saphostctrl_installed; then
+                     . ${OCF_FUNCTIONS_DIR}/sapdb.sh
+ else
++                    if [ -n "${OCF_RESKEY_DBOSUSER}" ]; then
++                      ocf_exit_reason "Usage of parameter OCF_RESKEY_DBOSUSER is not possible without having SAP Host-Agent installed"
++                      exit $OCF_ERR_ARGS
++                    fi
+                     . ${OCF_FUNCTIONS_DIR}/sapdb-nosha.sh
+ fi
+ sapdatabase_init
+diff --git a/heartbeat/sapdb.sh b/heartbeat/sapdb.sh
+index 7edb4b8..33d2033 100755
+--- a/heartbeat/sapdb.sh
++++ b/heartbeat/sapdb.sh
+@@ -210,7 +210,11 @@ sapdatabase_monitor() {
+       then
+         DBINST="-dbinstance $OCF_RESKEY_DBINSTANCE "
+       fi
+-      output=`$SAPHOSTCTRL -function GetDatabaseStatus -dbname $SID -dbtype $DBTYPE $DBINST`
++      if [ -n "$OCF_RESKEY_DBOSUSER" ]
++      then
++        DBOSUSER="-dbuser $OCF_RESKEY_DBOSUSER "
++      fi
++      output=`$SAPHOSTCTRL -function GetDatabaseStatus -dbname $SID -dbtype $DBTYPE $DBINST $DBOSUSER`
+ 
+       # we have to parse the output, because the returncode doesn't tell anything about the instance status
+       for SERVICE in `echo "$output" | grep -i 'Component[ ]*Name *[:=] [A-Za-z][A-Za-z0-9_]* (' | sed 's/^.*Component[ ]*Name *[:=] *\([A-Za-z][A-Za-z0-9_]*\).*$/\1/i'`
+@@ -255,30 +259,43 @@ sapdatabase_monitor() {
+ # sapdatabase_status: Are there any database processes on this host ?
+ #
+ sapdatabase_status() {
++  sid=`echo $SID | tr '[:upper:]' '[:lower:]'`
++
++  SUSER=${OCF_RESKEY_DBOSUSER:-""}
++
+   case $DBTYPE in
+     ADA) SEARCH="$SID/db/pgm/kernel"
+-         SUSER=`grep "^SdbOwner" /etc/opt/sdb | awk -F'=' '{print $2}'`
++         [ -z "$SUSER" ] && SUSER=`grep "^SdbOwner" /etc/opt/sdb | awk -F'=' '{print $2}'`
+          SNUM=2
+          ;;
+-    ORA) SEARCH="ora_[a-z][a-z][a-z][a-z]_"
+-         SUSER="ora`echo $SID | tr '[:upper:]' '[:lower:]'`"
+-         SNUM=4
++    ORA) DBINST=${OCF_RESKEY_DBINSTANCE}
++          DBINST=${OCF_RESKEY_DBINSTANCE:-${SID}}
++          SEARCH="ora_[a-z][a-z][a-z][a-z]_$DBINST"
++
++          if [ -z "$SUSER" ]; then
++            id "oracle" > /dev/null 2> /dev/null && SUSER="oracle"
++            id "ora${sid}" > /dev/null 2> /dev/null && SUSER="${SUSER:+${SUSER},}ora${sid}"
++          fi
++
++          SNUM=4
+          ;;
+     DB6) SEARCH="db2[a-z][a-z][a-z]"
+-         SUSER="db2`echo $SID | tr '[:upper:]' '[:lower:]'`"
++         [ -z "$SUSER" ] && SUSER="db2${sid}"
+          SNUM=2
+          ;;
+     SYB) SEARCH="dataserver"
+-         SUSER="syb`echo $SID | tr '[:upper:]' '[:lower:]'`"
++         [ -z "$SUSER" ] && SUSER="syb${sid}"
+          SNUM=1
+ 		 ;;
+     HDB) SEARCH="hdb[a-z]*server"
+-         SUSER="`echo $SID | tr '[:upper:]' '[:lower:]'`adm"
++         [ -z "$SUSER" ] && SUSER="${sid}adm"
+          SNUM=1
+ 		 ;;
+   esac
+ 
+-  cnt=`ps -u $SUSER -o args 2> /dev/null | grep -c $SEARCH`
++  [ -z "$SUSER" ] && return $OCF_ERR_INSTALLED
++
++  cnt=`ps -u $SUSER -o args 2> /dev/null | grep -v grep | grep -c $SEARCH`
+   [ $cnt -ge $SNUM ] && return $OCF_SUCCESS
+   return $OCF_NOT_RUNNING
+ }

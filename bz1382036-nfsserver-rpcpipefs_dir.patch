@@ -1,0 +1,78 @@
+From 694337750053d9f64aa494be871d9c4b1eb8e935 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 20 May 2016 15:47:33 +0200
+Subject: [PATCH] nfsserver: mount based on rpcpipefs_dir variable
+
+---
+ heartbeat/nfsserver | 30 ++++++++++++++++++------------
+ 1 file changed, 18 insertions(+), 12 deletions(-)
+
+diff --git a/heartbeat/nfsserver b/heartbeat/nfsserver
+index 3128da9..0d6ccbd 100755
+--- a/heartbeat/nfsserver
++++ b/heartbeat/nfsserver
+@@ -177,14 +177,8 @@ esac
+ fp="$OCF_RESKEY_nfs_shared_infodir"
+ : ${OCF_RESKEY_nfs_notify_cmd="$DEFAULT_NOTIFY_CMD"}
+ : ${OCF_RESKEY_nfs_notify_foreground="$DEFAULT_NOTIFY_FOREGROUND"}
+-
+-if [ -z ${OCF_RESKEY_rpcpipefs_dir} ]; then
+-	rpcpipefs_make_dir=$fp/rpc_pipefs
+-	rpcpipefs_umount_dir=${DEFAULT_RPCPIPEFS_DIR}
+-else
+-	rpcpipefs_make_dir=${OCF_RESKEY_rpcpipefs_dir}
+-	rpcpipefs_umount_dir=${OCF_RESKEY_rpcpipefs_dir}
+-fi
++: ${OCF_RESKEY_rpcpipefs_dir="$DEFAULT_RPCPIPEFS_DIR"}
++OCF_RESKEY_rpcpipefs_dir=${OCF_RESKEY_rpcpipefs_dir%/}
+ 
+ # Use statd folder if it exists
+ if [ -d "/var/lib/nfs/statd" ]; then
+@@ -362,7 +356,7 @@ prepare_directory ()
+ 	fi
+ 
+ 	[ -d "$fp" ] || mkdir -p $fp
+-	[ -d "$rpcpipefs_make_dir" ] || mkdir -p $rpcpipefs_make_dir
++	[ -d "$OCF_RESKEY_rpcpipefs_dir" ] || mkdir -p $OCF_RESKEY_rpcpipefs_dir
+ 	[ -d "$fp/v4recovery" ] || mkdir -p $fp/v4recovery
+ 
+ 	[ -d "$fp/$STATD_DIR" ] || mkdir -p "$fp/$STATD_DIR"
+@@ -406,9 +400,13 @@ bind_tree ()
+ 
+ unbind_tree ()
+ {
+-	if `mount | grep -q " on $rpcpipefs_umount_dir"`; then
+-		umount -t rpc_pipefs $rpcpipefs_umount_dir
+-	fi
++	local i=1
++	while `mount | grep -q " on $OCF_RESKEY_rpcpipefs_dir"` && [ "$i" -le 10 ]; do
++		ocf_log info "Stop: umount ($i/10 attempts)"
++		umount -t rpc_pipefs $OCF_RESKEY_rpcpipefs_dir
++		sleep 1
++		i=$((i + 1))
++	done
+ 	if is_bound /var/lib/nfs; then
+ 		umount /var/lib/nfs
+ 	fi
+@@ -569,6 +567,8 @@ nfsserver_start ()
+ 	prepare_directory
+ 	bind_tree
+ 
++	mount -t rpc_pipefs sunrpc $OCF_RESKEY_rpcpipefs_dir
++
+ 	# remove the sm-notify pid so sm-notify will be allowed to run again without requiring a reboot.
+ 	rm -f /var/run/sm-notify.pid
+ 	#
+@@ -637,6 +637,12 @@ nfsserver_stop ()
+ 		rc=$OCF_ERR_GENERIC
+ 	fi
+ 
++	case $EXEC_MODE in
++            [23]) nfs_exec stop rpc-gssd > /dev/null 2>&1
++		  ocf_log info "Stop: rpc-gssd" 
++		  ;;
++	esac
++
+ 	if [ $rc -eq 0 ]; then
+ 		unbind_tree 
+ 		ocf_log info "NFS server stopped"

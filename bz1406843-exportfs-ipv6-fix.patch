@@ -1,0 +1,14 @@
+diff -uNr a/heartbeat/exportfs b/heartbeat/exportfs
+--- a/heartbeat/exportfs	2016-12-22 14:29:11.347973419 +0100
++++ b/heartbeat/exportfs	2016-12-22 14:30:10.273326342 +0100
+@@ -204,6 +204,10 @@
+ is_exported() {
+ 	local dir=$1
+ 	local spec=$2
++
++	# IPv6 addressed are encased in brackets that need to be removed
++	spec=$(echo $spec | sed 's/\[//;s/\]//')
++
+ 	exportfs |
+ 		sed -e '$! N; s/\n[[:space:]]\+/ /; t; s/[[:space:]]\+\([^[:space:]]\+\)\(\n\|$\)/ \1\2/g; P;D;' |
+ 		grep -q -x -F "$dir $spec"

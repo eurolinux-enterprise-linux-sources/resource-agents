@@ -1,0 +1,33 @@
+From 408b1787db5c933dafed40be379c4245c9d616c2 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 16 Sep 2016 10:19:38 +0200
+Subject: [PATCH] portblock: create tickle_dir if it doesnt exist
+
+---
+ heartbeat/portblock | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/heartbeat/portblock b/heartbeat/portblock
+index c480954..143d4f8 100755
+--- a/heartbeat/portblock
++++ b/heartbeat/portblock
+@@ -465,10 +465,7 @@ IptablesValidateAll()
+ 		ocf_log err "Tickles are only useful with action=unblock!"
+ 		exit $OCF_ERR_CONFIGURED
+ 	fi
+-	if [ ! -d "$OCF_RESKEY_tickle_dir" ]; then
+-		ocf_log err "The tickle dir doesn't exist!"
+-		exit $OCF_ERR_INSTALLED	  	
+-	fi
++	mkdir -p $OCF_RESKEY_tickle_dir
+   fi
+ 
+   case $action in
+@@ -534,6 +531,7 @@ reset_local_on_unblock_stop=$OCF_RESKEY_reset_local_on_unblock_stop
+ 
+ case $1 in
+   start)	
++			IptablesValidateAll
+ 			IptablesStart $protocol $portno $ip $action 
+ 			;;
+ 

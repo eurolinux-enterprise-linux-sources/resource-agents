@@ -1,0 +1,24 @@
+From af5863ecd255d2d514113d39bbf03ab95b5ccca2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kristoffer=20Gr=C3=B6nlund?= <krig@koru.se>
+Date: Mon, 16 Nov 2015 17:14:43 +0100
+Subject: [PATCH] SAPDatabase: Add Oracle 12 to list of supported databases
+ (bsc#953991)
+
+This agent has been tested to work with Oracle database version 12.
+---
+ heartbeat/SAPDatabase | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/SAPDatabase b/heartbeat/SAPDatabase
+index 3b77206..de7959f 100755
+--- a/heartbeat/SAPDatabase
++++ b/heartbeat/SAPDatabase
+@@ -78,7 +78,7 @@ Resource script for SAP databases. It manages a SAP database of any type as an H
+ The purpose of the resource agent is to start, stop and monitor the database instance of a SAP system. Together with the RDBMS system it will also control the related network service for the database. Like the Oracle Listener and the xserver of MaxDB.
+ The resource agent expects a standard SAP installation of the database and therefore needs less parameters to configure.
+ The resource agent supports the following databases:
+-- Oracle 10.2 and 11.2
++- Oracle 10.2, 11.2 and 12
+ - DB/2 UDB for Windows and Unix 9.x
+ - SAP-DB / MaxDB 7.x
+ - Sybase ASE 15.7

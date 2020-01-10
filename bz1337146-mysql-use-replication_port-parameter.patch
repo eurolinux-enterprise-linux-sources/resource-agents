@@ -1,0 +1,55 @@
+From 98e235caa31c7cc73a834d8046e6f2ec2d04b832 Mon Sep 17 00:00:00 2001
+From: Marian Marinov <mm@yuhu.biz>
+Date: Sun, 10 Apr 2016 22:44:16 +0300
+Subject: [PATCH] heartbeat/mysql: Handle non-standard mysql server port
+
+Signed-off-by: Marian Marinov <mm@yuhu.biz>
+---
+ heartbeat/mysql | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/heartbeat/mysql b/heartbeat/mysql
+index e2d54dd..be914d3 100755
+--- a/heartbeat/mysql
++++ b/heartbeat/mysql
+@@ -549,6 +549,7 @@ set_master() {
+ 
+     ocf_run $MYSQL $MYSQL_OPTIONS_REPL \
+         -e "CHANGE MASTER TO MASTER_HOST='$new_master', \
++        MASTER_PORT=$OCF_RESKEY_replication_port, \
+         MASTER_USER='$OCF_RESKEY_replication_user', \
+         MASTER_PASSWORD='$OCF_RESKEY_replication_passwd' $master_params"
+     rm -f $tmpfile
+-- 
+2.5.5
+
+From e78f106cc5edabc50eb3622ce384ed2493250ec5 Mon Sep 17 00:00:00 2001
+From: Mathieu Peltier <mathieu.peltier@gmail.com>
+Date: Thu, 6 Nov 2014 17:16:38 +0100
+Subject: [PATCH] Modified replication_user description: RELOAD privilege is
+ required for RESET SLAVE or RESET SLAVE ALL command.
+
+---
+ heartbeat/mysql | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/heartbeat/mysql b/heartbeat/mysql
+index d895369..df65502 100755
+--- a/heartbeat/mysql
++++ b/heartbeat/mysql
+@@ -211,9 +211,9 @@ Additional parameters which are passed to the mysqld on startup.
+ MySQL replication user. This user is used for starting and stopping
+ MySQL replication, for setting and resetting the master host, and for
+ setting and unsetting read-only mode. Because of that, this user must
+-have SUPER, REPLICATION SLAVE, REPLICATION CLIENT, and PROCESS
+-privileges on all nodes within the cluster. Mandatory if you define
+-a master-slave resource.
++have SUPER, REPLICATION SLAVE, REPLICATION CLIENT, PROCESS and RELOAD
++privileges on all nodes within the cluster. Mandatory if you define a
++master-slave resource.
+ </longdesc>
+ <shortdesc lang="en">MySQL replication user</shortdesc>
+ <content type="string" default="${OCF_RESKEY_replication_user_default}" />
+-- 
+2.5.5
+

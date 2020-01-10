@@ -1,0 +1,22 @@
+From e1ce1963da082992494916f9548065ec8ff326f1 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 18 Mar 2016 11:10:17 +0100
+Subject: [PATCH] oracle: "shutdown immediate;" is needed after cleanup to be
+ able to recover from the ORA-01081 error
+
+---
+ heartbeat/oracle | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/heartbeat/oracle b/heartbeat/oracle
+index 951221c..5a8aca8 100755
+--- a/heartbeat/oracle
++++ b/heartbeat/oracle
+@@ -611,6 +611,7 @@ oracle_start() {
+ 		if echo "$output" | grep ORA-01081 >/dev/null 2>&1; then
+ 			ocf_log info "ORA-01081 error found, trying to cleanup oracle (dbstart_mount output: $output)"
+ 			ora_cleanup
++			output=`dbasql dbstop_immediate`
+ 			output=`dbasql dbstart_mount`
+ 		fi
+ 	fi

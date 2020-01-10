@@ -1,0 +1,23 @@
+From 0233f7862b2d2dc97003524821b203e3fdd279f1 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 30 Sep 2016 11:21:58 +0200
+Subject: [PATCH] lvm.sh: fix status clustered to check the specified logical
+ volume
+
+---
+ rgmanager/src/resources/lvm_by_lv.sh | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/rgmanager/src/resources/lvm_by_lv.sh b/rgmanager/src/resources/lvm_by_lv.sh
+index 366eaec..ef70366 100755
+--- a/rgmanager/src/resources/lvm_by_lv.sh
++++ b/rgmanager/src/resources/lvm_by_lv.sh
+@@ -183,6 +183,8 @@ lv_activate_resilient()
+ 
+ lv_status_clustered()
+ {
++	declare lv_path="$OCF_RESKEY_vg_name/$OCF_RESKEY_lv_name"
++
+ 	#
+ 	# Check if device is active
+ 	#

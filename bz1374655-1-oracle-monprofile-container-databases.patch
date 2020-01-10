@@ -1,0 +1,24 @@
+From 8ec7eb9fa6ccc242555eea7e3f0ebd7537799943 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Tue, 19 Apr 2016 14:27:39 +0200
+Subject: [PATCH] oracle: inform user that monprofile must start with C## for
+ container databases
+
+---
+ heartbeat/oracle | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/heartbeat/oracle b/heartbeat/oracle
+index 5a8aca8..d68fa6e 100755
+--- a/heartbeat/oracle
++++ b/heartbeat/oracle
+@@ -402,6 +402,9 @@ check_mon_profile() {
+ 	output=`dbasql mk_mon_profile show_mon_profile`
+ 	if echo "$output" | grep -iw "^$MONPROFILE" >/dev/null; then
+ 		return 0
++	elif echo "$output" | grep ORA-65140 >/dev/null 2>&1; then
++		ocf_log err "monprofile must start with C## for container databases"
++		return $OCF_ERR_CONFIGURED
+ 	else
+		ocf_log err "could not create $MONPROFILE oracle profile"
+ 		ocf_log err "sqlplus output: $output"
