@@ -1,0 +1,42 @@
+From d0e66e3eff9c6e03ec0eba2fe8b24a9f0b5ed379 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Thu, 25 Feb 2016 13:41:04 +0100
+Subject: [PATCH] rgmanager: fix .clumanager/statd ownership
+
+---
+ rgmanager/src/resources/clusterfs.sh | 1 +
+ rgmanager/src/resources/fs.sh.in     | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/rgmanager/src/resources/clusterfs.sh b/rgmanager/src/resources/clusterfs.sh
+index 07fd73b..ab2c292 100755
+--- a/rgmanager/src/resources/clusterfs.sh
++++ b/rgmanager/src/resources/clusterfs.sh
+@@ -301,6 +301,7 @@ do_pre_unmount() {
+ 	   [ "$OCF_RESKEY_nfslock" = "1" ]; then
+ 		ocf_log warning "Dropping node-wide NFS locks"
+ 		mkdir -p $mp/.clumanager/statd
++		chown rpcuser.rpcuser $mp/.clumanager/statd
+ 		pkill -KILL -x lockd
+ 		# Copy out the notify list; our 
+ 		# IPs are already torn down
+diff --git a/rgmanager/src/resources/fs.sh.in b/rgmanager/src/resources/fs.sh.in
+index 2924fa7..6d99f95 100644
+--- a/rgmanager/src/resources/fs.sh.in
++++ b/rgmanager/src/resources/fs.sh.in
+@@ -443,6 +443,7 @@ do_post_mount() {
+ 		if [ "$OCF_RESKEY_nfslock" = "yes" ] || \
+ 	   	   [ "$OCF_RESKEY_nfslock" = "1" ]; then
+ 			mkdir -p "$mp"/.clumanager/statd
++			chown rpcuser.rpcuser "$mp"/.clumanager/statd
+ 			notify_list_merge "$mp"/.clumanager/statd
+ 		fi
+ 	fi
+@@ -457,6 +458,7 @@ do_force_unmount() {
+ 		ocf_log warning "Dropping node-wide NFS locks"
+ 		pkill -KILL -x lockd
+ 		mkdir -p "$mp"/.clumanager/statd
++		chown rpcuser.rpcuser "$mp"/.clumanager/statd
+ 		# Copy out the notify list; our
+ 		# IPs are already torn down
+ 		notify_list_store "$mp"/.clumanager/statd

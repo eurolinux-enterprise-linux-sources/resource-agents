@@ -1,0 +1,37 @@
+diff -uNr a/sap_redhat_cluster_connector-6353d27/sap_redhat_cluster_connector b/sap_redhat_cluster_connector-6353d27/sap_redhat_cluster_connector
+--- a/sap_redhat_cluster_connector-6353d27/sap_redhat_cluster_connector	2013-07-18 21:17:48.000000000 +0200
++++ b/sap_redhat_cluster_connector-6353d27/sap_redhat_cluster_connector	2015-12-07 16:06:38.825357883 +0100
+@@ -251,13 +251,13 @@
+ 	open CRMOUT, "$cmd_cibadmin --local -Q --xpath '//primitive[\@type=\"$sra\"]' --node-path 2>/dev/null |" || die "could not open cibadmin output";
+ 	while (<CRMOUT>) {
+ 		my $line = $_;
+-		if ($line =~ /primitive..id='([a-zA-Z0-9_]+)'/) {
++		if ($line =~ /primitive..id='([a-zA-Z0-9_-]+)'/) {
+ 			($fname) = ($1);
+ 		} else {
+ 			next;
+ 		}
+ 
+-		if ( $line =~ /[group|master|clone]..id='([a-zA-Z0-9_]+)'/) {
++		if ( $line =~ /[group|master|clone]..id='([a-zA-Z0-9_-]+)'/) {
+ 			($fgname) = ($1);
+ 		}
+ 
+@@ -265,7 +265,7 @@
+ 			open RESOURCE1_OUT, "$cmd_cibadmin -Q --xpath \"//primitive[\@id='$fname']//nvpair[\@name='$sparam']\"  2>/dev/null |" || die "could not open cibadmin output";
+ 			while (<RESOURCE1_OUT>) {
+ 				my $result = $_;
+-				if ($result =~ /value="([a-zA-Z0-9_]+)"/) {
++				if ($result =~ /value="([a-zA-Z0-9_-]+)"/) {
+ 					my $finstance=$1;
+ 					if ( $1 =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
+ 						$foundRes=1;
+@@ -279,7 +279,7 @@
+ 			open RESOURCE2_OUT, "$cmd_cibadmin -Q --xpath \"//primitive[\@id='$fname']//nvpair[\@name='$sparam2']\"  2>/dev/null |" || die "could not open cibadmin output";
+ 			while (<RESOURCE2_OUT>) {
+ 				my $result = $_;
+-				if ($result =~ /value="([a-zA-Z0-9_]+)"/) {
++				if ($result =~ /value="([a-zA-Z0-9_-]+)"/) {
+ 					my $finstance=$1;
+ 					if ( $1 =~ /^${sid}_[a-zA-Z0-9]+${ino}_[a-zA-Z0-9_-]+$/ ) {
+ 						$foundRes=1;

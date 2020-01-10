@@ -37,7 +37,7 @@
 Name:		resource-agents
 Summary:	Open Source HA Reusable Cluster Resource Scripts
 Version:	3.9.5
-Release:	24%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.1
+Release:	34%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}
 License:	GPLv2+ and LGPLv2+
 URL:		http://to.be.defined.com/
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
@@ -81,6 +81,24 @@ Patch30:	bz1168251-SAPHana-agents-update.patch
 Patch31:	bz1168251-SAPHana-agents-update2.patch
 Patch32:	bz1168251-SAPHana-agents-update3.patch
 Patch33:	bz1168251-SAPHana-agents-update4.patch
+Patch34:	bz1200639-orainstance-wait-90sec.patch
+Patch35:	bz1191247-dad-ipv6.patch
+Patch36:	bz1207285-mysql-slow-start-status-check-fix.patch
+Patch37:	bz1234777-handle-failure-state.patch
+Patch38:	bz1070479-oracle-agents.patch
+Patch39:	bz1200903-saphana-mcos-support.patch
+Patch40:	bz1269897-sap_redhat_cluster_connector-support-for-dash-in-hostnames.patch
+Patch41:	bz1276698-use-ipv6-dad-for-collision-detection.patch
+Patch42:	bz1266173-lvm-raid-segment-support.patch
+Patch43:	bz1280319-tomcat-fix-selinux-enforced.patch
+Patch44:	bz1286650-virtualdomain-add-migrate_options-parameter.patch
+Patch45:	bz1024505-fs-remove-tmpfs.patch
+Patch46:	bz1292054-mysql-fix-tmpfile-leak.patch
+Patch47:	bz1285921-vm-add-migrate_options-parameter.patch
+Patch48:	bz1272587.patch
+Patch49: 	bz1302545-portblock.patch
+Patch50:	bz1086838-oracle-data-guard.patch
+Patch51:	bz1311963-rgmanager-fix-clumanager-statd-ownership.patch
 
 Obsoletes:	heartbeat-resources <= %{version}
 Provides:	heartbeat-resources = %{version}
@@ -231,6 +249,24 @@ exit 1
 %patch31 -p1
 %patch32 -p1
 %patch33 -p1
+%patch34 -p1
+%patch35 -p1
+%patch36 -p1
+%patch37 -p1
+%patch38 -p1
+%patch39 -p1
+%patch40 -p1
+%patch41 -p1
+%patch42 -p1
+%patch43 -p1
+%patch44 -p1
+%patch45 -p1
+%patch46 -p1
+%patch47 -p1
+%patch48 -p1
+%patch49 -p1
+%patch50 -p1
+%patch51 -p1
 
 %build
 ./autogen.sh
@@ -387,10 +423,7 @@ rm -rf %{buildroot}
 %exclude /usr/lib/ocf/resource.d/heartbeat/jboss
 %exclude /usr/lib/ocf/resource.d/heartbeat/ldirectord
 %exclude /usr/lib/ocf/resource.d/heartbeat/lxc
-%exclude /usr/lib/ocf/resource.d/heartbeat/oracle
-%exclude /usr/lib/ocf/resource.d/heartbeat/oralsnr
 %exclude /usr/lib/ocf/resource.d/heartbeat/pingd
-%exclude /usr/lib/ocf/resource.d/heartbeat/portblock
 %exclude /usr/lib/ocf/resource.d/heartbeat/pound
 %exclude /usr/lib/ocf/resource.d/heartbeat/proftpd
 %exclude /usr/lib/ocf/resource.d/heartbeat/scsi2reservation
@@ -433,10 +466,7 @@ rm -rf %{buildroot}
 %exclude %{_mandir}/man7/ocf_heartbeat_iscsi.7.gz
 %exclude %{_mandir}/man7/ocf_heartbeat_jboss.7.gz
 %exclude %{_mandir}/man7/ocf_heartbeat_lxc.7.gz
-%exclude %{_mandir}/man7/ocf_heartbeat_oracle.7.gz
-%exclude %{_mandir}/man7/ocf_heartbeat_oralsnr.7.gz
 %exclude %{_mandir}/man7/ocf_heartbeat_pingd.7.gz
-%exclude %{_mandir}/man7/ocf_heartbeat_portblock.7.gz
 %exclude %{_mandir}/man7/ocf_heartbeat_pound.7.gz
 %exclude %{_mandir}/man7/ocf_heartbeat_proftpd.7.gz
 %exclude %{_mandir}/man7/ocf_heartbeat_scsi2reservation.7.gz
@@ -499,17 +529,80 @@ ccs_update_schema > /dev/null 2>&1 ||:
 
 
 %changelog
-* Thu Oct  1 2015 Fabio M. Di Nitto <fdinitto@redhat.com> 3.9.5-24.1
-- Update addresses bug fixes for SAP Hana agents.
+* Thu Feb 25 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-34
+- rgmanager: fix .clumanager/statd ownership in fs.sh and clusterfs.sh
 
-  Resolves: rhbz#1267459
+  Resolves: rhbz#1311963
+
+* Thu Feb 25 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-32
+- Add portblock resource agent for Pacemaker
+- Add Oracle Data Guard resource agent for rgmanager
+
+  Resolves: rhbz#1302545
+  Resolves: rhbz#1086838
+
+* Wed Feb 24 2016 Jan Pokorny <jpokorny@redhat.com> - 3.9.5-31
+- Fix up for wrongly generated RNG schema for cluster configuration
+  wrt. "action" tag
+
+  Related: rhbz#1272587
+
+* Thu Jan 07 2016 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-30
+- Add migrate_options parameter to vm.sh
+
+  Resolves: rhbz#1285921
+
+* Mon Dec 21 2015 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-29
+- Set VirtualDomain migrate_options default
+
+  Resolves: rhbz#1286650
+
+* Mon Dec 21 2015 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-28
+- Use IPv6 DAD for collision detection in IPaddr2
+- Add RAID segment type support for HA LVM
+- Fix Tomcat SELinux failed in enforcing mode
+- Add migrate_options parameter to VirtualDomain
+- Remove not-working tmpfs "support" from fs.sh
+- Fix tmpfile leak in mysql resource agent
+
+  Resolves: rhbz#1276698
+  Resolves: rhbz#1266173
+  Resolves: rhbz#1280319
+  Resolves: rhbz#1286650
+  Resolves: rhbz#1024505
+  Resolves: rhbz#1292054
+
+* Mon Dec  7 2015 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-27
+- SAP HANA add Multiple Components One System (MCOS) support
+- sap_redhat_cluster_connector add support for "-" in hostnames
+
+  Resolves: rhbz#1200903
+  Resolves: rhbz#1269897
+
+* Wed Oct 28 2015 Oyvind Albrigtsen <oalbrigt@redhat.com> - 3.9.5-26
+- Match exact Oracle SID to avoid waiting for 90 seconds and killing other databases if their names include the name of the database you're trying to stop
+- Use DAD to check for address collision instead of ping for IPv6 in rgmanager
+- MySQL wait up to "startup_wait" seconds for mysqld to create PID
+- Handle failure state during stop in orainstance.sh
+- Add Oracle resource agents for Pacemaker
+
+  Resolves: rhbz#1200639
+  Resolves: rhbz#1191247
+  Resolves: rhbz#1207285
+  Resolves: rhbz#1234777
+  Resolves: rhbz#1070479
+
+* Thu Sep 10 2015 Fabio M. Di Nitto <fdinitto@redhat.com> - 3.9.5-25
+- SAP Hana update to address several bugs
+
+  Resolves: rhbz#1245730
 
 * Thu May 07 2015 David Vossel <dvossel@redhat.com> - 3.9.5-24
 - Update addresses bug fixes for SAP Hana agents.
 
   Resolves: rhbz#1168251
 
-* Mon Apr 21 2015 David Vossel <dvossel@redhat.com> - 3.9.5-23
+* Tue Apr 21 2015 David Vossel <dvossel@redhat.com> - 3.9.5-23
 - Update addresses bug fixes for SAP Hana agents.
 
   Resolves: rhbz#1168251
@@ -827,7 +920,7 @@ ccs_update_schema > /dev/null 2>&1 ||:
 - Merge upstream heartbeat agents in for Pacemaker support.
   Resolves: rhbz#989284
 
-* Thu Jul 22 2013 David Vossel <dvossel@redhat.com> - 3.9.2-27
+* Mon Jul 22 2013 David Vossel <dvossel@redhat.com> - 3.9.2-27
 - Add missing sap agents to sap subpackage
   Resolves: rhbz#922838
 
@@ -836,7 +929,7 @@ ccs_update_schema > /dev/null 2>&1 ||:
 - Create SAP subpackage
   Resolves: rhbz#922838
 
-* Thu Jul 3 2013 David Vossel <dvossel@redhat.com> - 3.9.2-25
+* Wed Jul  3 2013 David Vossel <dvossel@redhat.com> - 3.9.2-25
 - fast filesystem mounts
 - properly handle NFS v4 mounts
 - fix uppercase ipv6 addresses

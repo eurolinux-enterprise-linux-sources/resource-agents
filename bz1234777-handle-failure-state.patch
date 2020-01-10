@@ -1,0 +1,23 @@
+diff -uNr a/rgmanager/src/resources/orainstance.sh b/rgmanager/src/resources/orainstance.sh
+--- a/rgmanager/src/resources/orainstance.sh	2015-10-28 09:21:18.292488482 +0100
++++ b/rgmanager/src/resources/orainstance.sh	2015-10-28 09:32:03.036001434 +0100
+@@ -473,9 +473,17 @@
+ 		ocf_log info "Stopping listener $LISTENER for $ORACLE_SID"
+ 		lsnrctl_stdout=$(lsnrctl stop "$LISTENER")
+ 		rv=$?
+-		if [ $? -ne 0 ]; then
++		if [ $rv -ne 0 ]; then
+ 			ocf_log error "Listener $LISTENER stop failed for $ORACLE_SID: $rv output $lsnrctl_stdout"
+-			# XXX - failure?
++
++			pid=`ps ax | grep "tnslsnr $LISTENER " | grep -v grep | awk '{print $1}'`
++			kill -9 $pid
++			rv=$?
++			if [ $rv -eq 0 ]; then
++				ocf_log info "Cleanup $LISTENER Killed PID $pid"
++			else
++				ocf_log error "Cleanup $LISTENER Kill PID $pid failed: $rv"
++			fi
+ 		fi
+ 	done
+ 

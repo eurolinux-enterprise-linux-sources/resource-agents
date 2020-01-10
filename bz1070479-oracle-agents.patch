@@ -1,0 +1,304 @@
+diff -uNr a/heartbeat/oracle b/heartbeat/oracle
+--- a/heartbeat/oracle	2014-05-29 21:33:32.000000000 +0200
++++ b/heartbeat/oracle	2015-10-28 10:00:12.254911960 +0100
+@@ -27,6 +27,9 @@
+ #	OCF_RESKEY_ipcrm (optional; defaults to "instance")
+ #	OCF_RESKEY_clear_backupmode (optional; default to "false")
+ #	OCF_RESKEY_shutdown_method (optional; default to "checkpoint/abort")
++#	OCF_RESKEY_monuser (optional; defaults to "OCFMON")
++#	OCF_RESKEY_monpassword (optional; defaults to "OCFMON")
++#	OCF_RESKEY_monprofile (optional; defaults to "OCFMONPROFILE")
+ #
+ # Initialization:
+ 
+@@ -56,6 +59,11 @@
+ 	!
+ }
+ 
++# Defaults
++OCF_RESKEY_monuser_default="OCFMON"
++OCF_RESKEY_monpassword_default="OCFMON"
++OCF_RESKEY_monprofile_default="OCFMONPROFILE"
++
+ oracle_meta_data() {
+ 	cat <<END
+ <?xml version="1.0"?>
+@@ -100,6 +108,39 @@
+ <content type="string" default="" />
+ </parameter>
+ 
++<parameter name="monuser" unique="0">
++<longdesc lang="en">
++Monitoring user name. Every connection as
++sysdba is logged in an audit log. This can
++result in a large number of new files created.
++A new user is created (if it doesn't exist) in
++the start action and subsequently used in monitor.
++It should have very limited rights. Make sure
++that the password for this user does not expire.
++</longdesc>
++<shortdesc lang="en">monuser</shortdesc>
++<content type="string" default="$OCF_RESKEY_monuser_default" />
++</parameter>
++
++<parameter name="monpassword" unique="0">
++<longdesc lang="en">
++Password for the monitoring user. Make sure
++that the password for this user does not expire.
++</longdesc>
++<shortdesc lang="en">monpassword</shortdesc>
++<content type="string" default="$OCF_RESKEY_monpassword_default" />
++</parameter>
++
++<parameter name="monprofile" unique="0">
++<longdesc lang="en">
++Profile used by the monitoring user. If the
++profile does not exist, it will be created
++with a non-expiring password.
++</longdesc>
++<shortdesc lang="en">monprofile</shortdesc>
++<content type="string" default="$OCF_RESKEY_monprofile_default" />
++</parameter>
++
+ <parameter name="ipcrm" unique="0">
+ <longdesc lang="en">
+ Sometimes IPC objects (shared memory segments and semaphores)
+@@ -216,7 +257,7 @@
+ 	if [ "$US" = "$ORACLE_OWNER" ]; then
+ 		sqlplus -S /nolog
+ 	else
+-		su - $ORACLE_OWNER -c ". $ORA_ENVF; sqlplus -S /nolog"
++		su - $ORACLE_OWNER -s /bin/sh -c ". $ORA_ENVF; sqlplus -S /nolog"
+ 	fi
+ }
+ 
+@@ -250,7 +291,7 @@
+ 	runsql "connect / as sysdba" $*
+ }
+ monsql() {
+-	runsql "connect $MONUSR/$MONUSR" $*
++	runsql "connect $MONUSR/\"$MONPWD\"" $*
+ }
+ # use dbasql_one if the query should result in a single line output
+ # at times people stuff commands in oracle .profile
+@@ -325,22 +366,73 @@
+ 	echo "oradebug tracefile_name"
+ 	echo "oradebug ipc"
+ }
++show_mon_profile() {
++	echo "select PROFILE from dba_profiles where PROFILE='$MONPROFILE';"
++}
++mk_mon_profile() {
++	cat<<EOF
++create profile $MONPROFILE limit FAILED_LOGIN_ATTEMPTS UNLIMITED PASSWORD_LIFE_TIME UNLIMITED;
++EOF
++}
+ show_mon_user() {
+ 	echo "select USERNAME, ACCOUNT_STATUS from dba_users where USERNAME='$MONUSR';"
+ }
+ mk_mon_user() {
+ 	cat<<EOF
+-create user $MONUSR identified by $MONUSR;
++create user $MONUSR identified by "$MONPWD" profile $MONPROFILE;
+ grant create session to $MONUSR;
+ grant select on v_\$instance to $MONUSR;
+ EOF
+ }
+-check_mon_user() {
++show_mon_user_profile() {
++	echo "select PROFILE from dba_users where USERNAME='$MONUSR';"
++}
++set_mon_user_profile() {
++	echo "alter user $MONUSR profile $MONPROFILE;"
++}
++reset_mon_user_password() {
++	echo "alter user $MONUSR identified by $MONPWD;"
++}
++check_mon_profile() {
+ 	local output
+-	dbasql show_mon_user | grep -w "^$MONUSR" >/dev/null &&
++	output=`dbasql show_mon_profile`
++	if echo "$output" | grep -iw "^$MONPROFILE" >/dev/null; then
+ 		return 0
++	fi
++	output=`dbasql mk_mon_profile show_mon_profile`
++	if echo "$output" | grep -iw "^$MONPROFILE" >/dev/null; then
++		return 0
++	else
++		ocf_log err "could not create $MONPROFILE oracle profile"
++		ocf_log err "sqlplus output: $output"
++		return 1
++	fi
++}
++check_mon_user() {
++	local output
++	local output2
++
++	output=`dbasql show_mon_user`
++	if echo "$output" | grep -iw "^$MONUSR" >/dev/null; then
++		if echo "$output" | grep -w "EXPIRED" >/dev/null; then
++			dbasql reset_mon_user_password
++		fi
++		output=`dbasql show_mon_user_profile`
++		if echo "$output" | grep -iw "^$MONPROFILE" >/dev/null; then
++			return 0
++		else
++			output=`dbasql set_mon_user_profile`
++			output2=`dbasql show_mon_user_profile`
++			if echo "$output2" | grep -iw "^$MONPROFILE" >/dev/null; then
++				return 0
++			fi
++			ocf_log err "could not set profile for $MONUSR oracle user"
++			ocf_log err "sqlplus output: $output( $output2 )"
++			return 1
++		fi
++	fi
+ 	output=`dbasql mk_mon_user show_mon_user`
+-	if echo "$output" | grep -w "^$MONUSR" >/dev/null; then
++	if echo "$output" | grep -iw "^$MONUSR" >/dev/null; then
+ 		return 0
+ 	else
+ 		ocf_log err "could not create $MONUSR oracle user"
+@@ -417,7 +509,7 @@
+ }
+ rmipc() {
+ 	local what=$1 id=$2
+-	ipcs -$what | filteroraipc | grep -w $id >/dev/null 2>&1 ||
++	ipcs -$what | filteroraipc | grep -iw $id >/dev/null 2>&1 ||
+ 		return
+ 	ocf_log info "Removing `ipcdesc $what` $id."
+ 	ipcrm -$what $id
+@@ -447,6 +539,8 @@
+ # instance in OPEN state?
+ instance_live() {
+ 	local status=`monsql_one dbstat`
++	[ "$status" = OPEN ] && return 0
++	status=`dbasql_one dbstat`
+ 	if [ "$status" = OPEN ]; then
+ 		return 0
+ 	else
+@@ -493,7 +587,7 @@
+ oracle_start() {
+ 	local status output
+ 	if is_proc_running; then
+-		status="`monsql_one dbstat`"
++		status="`dbasql_one dbstat`"
+ 		case "$status" in
+ 		"OPEN")
+ 			: nothing to be done, we can leave right now
+@@ -541,6 +635,11 @@
+ 	fi
+ 	output=`dbasql dbopen`
+ 
++	# check/create the monitor profile
++	if ! check_mon_profile; then
++		return $OCF_ERR_GENERIC
++	fi
++
+ 	# check/create the monitor user
+ 	if ! check_mon_user; then
+ 		return $OCF_ERR_GENERIC
+@@ -650,7 +749,12 @@
+ proc_pids() { show_procs | awk '{print $1}'; }
+ PROCS_CLEANUP_TIME="30"
+ 
+-MONUSR="OCFMON"
++MONUSR=${OCF_RESKEY_monuser:-$OCF_RESKEY_monuser_default}
++MONPWD=${OCF_RESKEY_monpassword:-$OCF_RESKEY_monpassword_default}
++MONPROFILE=${OCF_RESKEY_monprofile_default:-$OCF_RESKEY_monprofile_default}
++
++MONUSR=$(echo $MONUSR | awk '{print toupper($0)}')
++MONPROFILE=$(echo $MONPROFILE | awk '{print toupper($0)}')
+ OCF_REQUIRED_PARAMS="sid"
+ OCF_REQUIRED_BINARIES="sqlplus"
+ ocf_rarun $*
+diff -uNr a/heartbeat/ora-common.sh b/heartbeat/ora-common.sh
+--- a/heartbeat/ora-common.sh	2014-05-29 21:33:32.000000000 +0200
++++ b/heartbeat/ora-common.sh	2015-10-28 09:59:58.889166032 +0100
+@@ -17,8 +17,13 @@
+ 
+ ora_common_getconfig() {
+ 	ORACLE_SID=$1
++	# optional, defaults to whatever is in oratab
+ 	ORACLE_HOME=$2
++	# optional, defaults to the owner of ORACLE_HOME
+ 	ORACLE_OWNER=$3
++	# optional, defaults to $ORACLE_HOME/network/admin
++	# (only the oralsnr may provide and use this one)
++	TNS_ADMIN=$4
+ 
+ 	# get ORACLE_HOME from /etc/oratab if not set
+ 	[ x = "x$ORACLE_HOME" ] &&
+@@ -28,9 +33,13 @@
+ 	[ x = "x$ORACLE_OWNER" ] &&
+ 		ORACLE_OWNER=`ls -ld $ORACLE_HOME/. 2>/dev/null | awk 'NR==1{print $3}'`
+ 
++	# There are use-cases were users want to be able to set a custom TMS_ADMIN path.
++	# When TNS_ADMIN is not provided, use the default path.
++	[ x = "x$TNS_ADMIN" ] &&
++		TNS_ADMIN=$ORACLE_HOME/network/admin
++
+ 	LD_LIBRARY_PATH=$ORACLE_HOME/lib
+ 	LIBPATH=$ORACLE_HOME/lib
+-	TNS_ADMIN=$ORACLE_HOME/network/admin
+ 	PATH=$ORACLE_HOME/bin:$ORACLE_HOME/dbs:$PATH
+ 	export ORACLE_SID ORACLE_HOME ORACLE_OWNER TNS_ADMIN
+ 	export LD_LIBRARY_PATH LIBPATH
+@@ -70,7 +79,7 @@
+ ORACLE_OWNER=$ORACLE_OWNER
+ LD_LIBRARY_PATH=$ORACLE_HOME/lib
+ LIBPATH=$ORACLE_HOME/lib
+-TNS_ADMIN=$ORACLE_HOME/network/admin
++TNS_ADMIN=$TNS_ADMIN
+ export ORACLE_SID ORACLE_HOME ORACLE_OWNER TNS_ADMIN
+ export LD_LIBRARY_PATH LIBPATH
+ EOF
+diff -uNr a/heartbeat/oralsnr b/heartbeat/oralsnr
+--- a/heartbeat/oralsnr	2014-05-29 21:33:32.000000000 +0200
++++ b/heartbeat/oralsnr	2015-10-28 10:00:26.085649049 +0100
+@@ -104,6 +104,18 @@
+ <content type="string" default="" />
+ </parameter>
+ 
++<parameter name="tns_admin" required="0" unique="1">
++<longdesc lang="en">
++	Full path to the directory that contains the Oracle
++	listener tnsnames.ora configuration file.  The shell
++	variable TNS_ADMIN is set to the value provided.
++</longdesc>
++<shortdesc lang="en">
++	Full path to the directory containing tnsnames.ora
++</shortdesc>
++<content type="string"/>
++</parameter>
++
+ </parameters>
+ 
+ <actions>
+@@ -146,7 +158,7 @@
+ 		(
+ 		echo ". $ORA_ENVF"
+ 		cat
+-		) | su - $ORACLE_OWNER
++		) | su -s $SH - $ORACLE_OWNER
+ 	fi
+ }
+ 
+@@ -245,7 +257,7 @@
+ }
+ 
+ oralsnr_getconfig() {
+-	ora_common_getconfig "$OCF_RESKEY_sid" "$OCF_RESKEY_home" "$OCF_RESKEY_user"
++	ora_common_getconfig "$OCF_RESKEY_sid" "$OCF_RESKEY_home" "$OCF_RESKEY_user" "$OCF_RESKEY_tns_admin"
+ 	listener=${OCF_RESKEY_listener:-"LISTENER"}
+ }
+ 
+@@ -256,7 +268,7 @@
+ # used in ora-common.sh
+ show_procs() {
+ 	ps -e -o pid,user,args |
+-		grep '[t]nslsnr' | grep -w "$listener" | grep -w "$ORACLE_OWNER"
++		grep '[t]nslsnr' | grep -i -w "$listener" | grep -w "$ORACLE_OWNER"
+ }
+ proc_pids() { show_procs | awk '{print $1}'; }
+ PROCS_CLEANUP_TIME="10"

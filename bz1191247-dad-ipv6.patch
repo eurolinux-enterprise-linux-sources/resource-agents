@@ -1,0 +1,163 @@
+diff -uNr a/rgmanager/src/resources/ip.sh b/rgmanager/src/resources/ip.sh
+--- a/rgmanager/src/resources/ip.sh	2015-10-08 13:08:58.113784701 +0200
++++ b/rgmanager/src/resources/ip.sh	2015-10-08 13:04:46.251353436 +0200
+@@ -1,12 +1,11 @@
+ #!/bin/bash
+ 
+ #
+-# IPv4/IPv6 address management using new /sbin/ifcfg instead of 
+-# ifconfig utility.
++# IPv4/IPv6 address management using iproute2 (formerly: ifcfg, ifconfig).
+ #
+ #
+ # Copyright (C) 1997-2003 Sistina Software, Inc.  All rights reserved.
+-# Copyright (C) 2004-2011 Red Hat, Inc.  All rights reserved.
++# Copyright (C) 2004-2012 Red Hat, Inc.  All rights reserved.
+ #
+ # This program is free software; you can redistribute it and/or
+ # modify it under the terms of the GNU General Public License
+@@ -60,7 +59,8 @@
+         <parameter name="address" unique="1" primary="1">
+             <longdesc lang="en">
+                 IPv4 or IPv6 address to use as a virtual IP
+-                resource.
++                resource.  It may be followed by a slash and a decimal
++                number that encodes the network prefix length.
+             </longdesc>
+ 
+             <shortdesc lang="en">
+@@ -583,7 +583,7 @@
+ 
+ 
+ #
+-# Add an IP address to our interface.
++# Add an IP address to our interface or remove it.
+ #
+ ipv6()
+ {
+@@ -629,24 +629,40 @@
+ 			ocf_log info "Removing IPv6 address $addr from $dev"
+                 fi
+ 		
+-		if [ "$1" = "add" ]; then
+-			ocf_log debug "Pinging addr ${addr%%/*} from dev $dev"
+-			if ping_check inet6 ${addr%%/*} $dev; then
+-				ocf_log err "IPv6 address collision ${addr%%/*}"
+-				return 1
+-			fi
+-		fi
+ 		/sbin/ip -f inet6 addr $1 dev $dev $addr
+ 		[ $? -ne 0 ] && return 1
+-		
+ 
++		# Duplicate Address Detection [DAD]
++		# Kernel will flag the IP as 'tentative' until it ensured that
++		# there is no duplicates.
++		# if there is, it will flag it as 'dadfailed'
+ 		if [ "$1" = "add" ]; then
+-			# Try to send Unsolicited Neighbor Advertisements if send_ua is available
++			for i in {1..10}; do
++				ipstatus=$(/sbin/ip -o -f inet6 addr show dev $dev to $addr)
++				if [[ $ipstatus == *dadfailed* ]]; then
++					ocf_log err "IPv6 address collision ${addr%%/*} [DAD]"
++					ip -f inet6 addr del dev $dev $addr
++					if [[ $? -ne 0 ]]; then
++						ocf_log err "Could not delete IPv6 address"
++					fi
++					return 1
++				elif [[ $ipstatus != *tentative* ]]; then
++					break
++				elif [[ $i -eq 10 ]]; then
++					ofc_log warn "IPv6 address : DAD is still in tentative"
++				fi
++				sleep 0.5
++			done
++			# Now the address should be useable
++                        # Try to send Unsolicited Neighbor Advertisements if send_ua is available
+ 			if [ -x $SENDUA ]; then
+-				run_send_ua $dev ${addr%%/*} $maskbits
++				ARGS="-i 200 -c 5 ${addr%%/*} $maskbits $dev"
++				ocf_log info "$SENDUA $ARGS"
++				$SENDUA $ARGS || ocf_log err "Could not send ICMPv6 Unsolicited Neighbor Advertisements."
+ 			fi
+ 		fi
+ 		
++		
+ 		# Not sure if this is necessary for ipv6 either.
+ 		file=$(which rdisc 2>/dev/null)
+ 		if [ -f "$file" ]; then
+@@ -662,36 +678,9 @@
+ 	return 1
+ }
+ 
+-#
+-# Run send_ua to note send ICMPv6 Unsolicited Neighbor Advertisements.
+-# Based on heartbeat's IPaddr2
+-# Parameters : device address maskbits
+-# 
+-run_send_ua() {
+-
+-	local i dev=$1 addr=$2 maskbits=$3
+-
+-	# Wait until the allocated IPv6 address gets ready by checking
+-	# "tentative" flag is disappeared, otherwise send_ua can not
+-	# send the unsolicited advertisement requests.
+-        for i in 1 2 3 4 5; do
+-                if [ $(/sbin/ip -o -f inet6 addr show dev $dev to $addr tentative | wc -l) -eq 0 ]; then
+-                        break
+-                fi
+-                if [ $i -eq 5 ]; then
+-                        ocf_log warn "$addr still has 'tentative' status. (ignored)"
+-                        break
+-                fi
+-                sleep 1
+-        done
+-	# ARGS based on IPaddr2's default (arp_interval & arp_count)
+-	ARGS="-i 200 -c 5 $addr $maskbits $dev"
+-	ocf_log info "$SENDUA $ARGS"
+-	$SENDUA $ARGS || ocf_log err "Could not send ICMPv6 Unsolicited Neighbor Advertisements."
+-}
+ 
+ #
+-# Add an IP address to our interface.
++# Add an IP address to our interface or remove it.
+ #
+ ipv4()
+ {
+@@ -747,7 +736,7 @@
+ 		[ $? -ne 0 ] && return 1
+ 		
+         	#
+-	        # The following is needed only with ifconfig; ifcfg does it for us
++		# XXX: Following needed? ifconfig:YES, ifcfg:NO, iproute2:???
+         	#
+ 		if [ "$1" = "add" ]; then
+         		# do that freak arp thing
+@@ -842,7 +831,7 @@
+ 	declare addr
+ 	declare currentAddr caExpanded
+ 
+-	# Chop off maxk bits 
++	# Chop off mask bits
+ 	addr=${2/\/*/}
+ 
+ 	if [ "$1" == "inet6" ]; then
+@@ -962,7 +951,7 @@
+ 
+ # Force ipv6 addresses to lower case
+ if [ "$OCF_RESKEY_family" = "inet6" ]; then
+-       OCF_RESKEY_address=$(echo $OCF_RESKEY_address | tr '[:upper:]' '[:lower:]')
++	OCF_RESKEY_address=$(echo $OCF_RESKEY_address | tr '[:upper:]' '[:lower:]')
+ fi
+ 
+ if [ -z "$OCF_CHECK_LEVEL" ]; then
+@@ -970,8 +959,7 @@
+ fi
+ 
+ if [ "${OCF_RESKEY_monitor_link}" = "no" ] ||
+-   [ "${OCF_RESKEY_monitor_link}" = "0" ] ||
+-   [ "${OCF_RESKEY_monitor_link}" = "off" ]; then
++   [ "${OCF_RESKEY_monitor_link}" = "0" ]; then
+         OCF_RESKEY_monitor_link="no"
+ else
+         OCF_RESKEY_monitor_link="yes"

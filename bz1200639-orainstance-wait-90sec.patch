@@ -1,0 +1,21 @@
+diff -uNr a/rgmanager/src/resources/orainstance.sh b/rgmanager/src/resources/orainstance.sh
+--- a/rgmanager/src/resources/orainstance.sh	2015-10-27 16:35:58.391493881 +0100
++++ b/rgmanager/src/resources/orainstance.sh	2015-10-27 16:32:35.120668369 +0100
+@@ -193,7 +193,7 @@
+ 
+ 	ocf_log error "Not all Oracle processes for $ORACLE_SID exited cleanly, killing"
+ 	
+-	pids=`ps ax | grep "ora_.*_${ORACLE_SID}" | grep -v grep | awk '{print $1}'`
++	pids=`ps ax | grep "ora_.*_${ORACLE_SID}$" | grep -v grep | awk '{print $1}'`
+ 
+ 	for pid in $pids; do
+ 		kill -9 $pid
+@@ -216,7 +216,7 @@
+ 	declare -i n=0
+ 	
+ 	ocf_log debug "Waiting for Oracle processes for $ORACLE_SID to terminate..."
+-	while ps ax | grep $ORACLE_SID | grep -v grep | grep -q -v $LSNR_PROCNAME; do
++	while ps ax | grep "ora_.*_${ORACLE_SID}$" | grep -v grep | grep -q -v $LSNR_PROCNAME; do
+ 		if [ $n -ge 90 ]; then
+ 			ocf_log debug "Timed out while waiting for Oracle processes for $ORACLE_SID to terminate"
+ 			force_cleanup

@@ -1,0 +1,207 @@
+diff -uNr a/heartbeat/portblock b/heartbeat/portblock
+--- a/heartbeat/portblock	2014-05-29 21:33:32.000000000 +0200
++++ b/heartbeat/portblock	2016-02-25 09:30:30.509890545 +0100
+@@ -24,8 +24,10 @@
+ 
+ # Defaults
+ OCF_RESKEY_ip_default="0.0.0.0/0"
++OCF_RESKEY_reset_local_on_unblock_stop_default="false"
+ 
+ : ${OCF_RESKEY_ip=${OCF_RESKEY_ip_default}}
++: ${OCF_RESKEY_reset_local_on_unblock_stop=${OCF_RESKEY_reset_local_on_unblock_stop_default}}
+ #######################################################################
+ CMD=`basename $0`
+ TICKLETCP=$HA_BIN/tickle_tcp
+@@ -37,16 +39,22 @@
+ 
+ 	$CMD is used to temporarily block ports using iptables.
+ 
+-	It can be used to turn off a port before bringing
++	It can be used to blackhole a port before bringing
+ 	up an IP address, and enable it after a service is started.
+-	To do that for samba, the following resource line can be used:
++	To do that for samba, the following can be used:
+ 
+-	$CMD::tcp::137,138::block		\\
+-	    10.10.10.20				\\
+-	    nmbd smbd 				\\
+-	    $CMD::tcp::137,138::unblock
++	crm configure <<EOF
++	primitive portblock-samba ocf:heartbeat:portblock \\
++	  params protocol=tcp portno=137,138 action=block
++	primitive portunblock-samba ocf:heartbeat:portblock \\
++	  params protocol=tcp portno=137,138 action=unblock
++	primitive samba-vip ocf:heartbeat:IPaddr2 \\
++	  params ip=10.10.10.20
++	group g-samba \\
++	  portblock-samba samba-vip nmbd smbd portunblock-samba
++	EOF
+ 
+-	This will do the follwing things:
++	This will do the following things:
+ 
+ 	  - DROP all incoming packets for TCP ports 137 and 138
+ 	  - Bring up the IP alias 10.10.10.20
+@@ -54,13 +62,16 @@
+ 	  - Re-enable TCP ports 137 and 138
+ 	        (enable normal firewall rules on those ports)
+ 
+-	This prevents clients from getting ICMP port unreachable
+-	if they try to reconnect to the service after the alias is
+-	enabled but before nmbd and smbd are running.  These packets
+-	will cause some clients to give up attempting to reconnect to
+-	the server.
++	This prevents clients from getting TCP RST if they try to reconnect
++	to the service after the alias is enabled but before nmbd and smbd
++	are running.  These packets will cause some clients to give up
++	attempting to reconnect to the server.
++
++	Attempts to connect to UDP and other non-TCP ports which have nothing
++	listening can result in ICMP port unreachable responses, which can
++	have the same undesirable affect on some clients.
+ 
+-	NOTE:  iptables is linux-specific...
++	NOTE: iptables is Linux-specific.
+ 
+ 	An additional feature in the portblock RA is the tickle ACK function
+ 	enabled by specifying the tickle_dir parameter. The tickle ACK 
+@@ -138,7 +149,7 @@
+ The port number used to be blocked/unblocked.
+ </longdesc>
+ <shortdesc lang="en">portno</shortdesc>
+-<content type="integer" default="" />
++<content type="string" default="" />
+ </parameter>
+ 
+ <parameter name="action" unique="0" required="1">
+@@ -149,6 +160,26 @@
+ <content type="string" default="" />
+ </parameter>
+ 
++<parameter name="reset_local_on_unblock_stop" unique="0" required="0">
++<content type="boolean" default="${OCF_RESKEY_reset_local_on_unblock_stop_default}" />
++<shortdesc lang="en">(try to) reset server TCP sessions when unblock stops</shortdesc>
++<longdesc>
++If for some reason the long lived server side TCP sessions won't be cleaned up
++by a reconfiguration/flush/stop of whatever services this portblock protects,
++they would linger in the connection table, even after the IP is gone
++and services have been switched over to an other node.
++
++An example would be the default NFS kernel server.
++
++These "known" connections may seriously confuse and delay a later switchback.
++
++Enabling this option will cause this agent to try to get rid of these connections
++by injecting a temporary iptables rule to TCP-reset outgoing packets from the
++blocked ports, and additionally tickle them locally,
++just before it starts to DROP incoming packets on "unblock stop".
++</longdesc>
++</parameter>
++
+ <parameter name="ip" unique="0" required="0">
+ <longdesc lang="en">
+ The IP address used to be blocked/unblocked.
+@@ -233,12 +264,34 @@
+ 	fi
+ }
+ 
+-run_tickle_tcp()
++tickle_remote()
+ {
+ 	[ -z "$OCF_RESKEY_tickle_dir" ] && return
+ 	echo 1 > /proc/sys/net/ipv4/tcp_tw_recycle
+ 	f=$OCF_RESKEY_tickle_dir/$OCF_RESKEY_ip
+-	[ -f $f ] && cat $f | $TICKLETCP -n 3
++	[ -r $f ] || return
++	$TICKLETCP -n 3 < $f
++}
++
++tickle_local()
++{
++	[ -z "$OCF_RESKEY_tickle_dir" ] && return
++	f=$OCF_RESKEY_tickle_dir/$OCF_RESKEY_ip
++	[ -r $f ] || return
++	# swap "local" and "remote" address,
++	# so we tickle ourselves.
++	# We set up a REJECT with tcp-reset before we do so, so we get rid of
++	# the no longer wanted potentially long lived "ESTABLISHED" connection
++	# entries on the IP we are going to delet in a sec.  These would get in
++	# the way if we switch-over and then switch-back in quick succession.
++	local i
++	awk '{ print $2, $1; }' $f | $TICKLETCP
++	netstat -tn | grep -Fw $OCF_RESKEY_ip || return
++	for i in 0.1 0.5 1 2 4 ; do
++		sleep $i
++		awk '{ print $2, $1; }' $f | $TICKLETCP
++		netstat -tn | grep -Fw $OCF_RESKEY_ip || break
++	done
+ }
+ 
+ SayActive()
+@@ -304,15 +357,30 @@
+ #IptablesBLOCK  {udp|tcp} portno,portno ip
+ IptablesBLOCK()
+ {
++  local rc=0
++  local try_reset=false
++  if	[ "$1/$4/$__OCF_ACTION" = tcp/unblock/stop ] &&
++	ocf_is_true $reset_local_on_unblock_stop
++  then
++	try_reset=true
++  fi
+   if
+     chain_isactive "$1" "$2" "$3"
+   then
+     : OK -- chain already active
+   else
++    if $try_reset ; then
++      $IPTABLES -I OUTPUT -p "$1" -s "$3" -m multiport --sports "$2" -j REJECT --reject-with tcp-reset
++      tickle_local
++    fi
+     $IPTABLES -I INPUT -p "$1" -d "$3" -m multiport --dports "$2" -j DROP
++    rc=$?
++    if $try_reset ; then
++      $IPTABLES -D OUTPUT -p "$1" -s "$3" -m multiport --sports "$2" -j REJECT --reject-with tcp-reset
++    fi
+   fi
+ 
+-  return $?
++  return $rc
+ }
+ 
+ #IptablesUNBLOCK  {udp|tcp} portno,portno ip
+@@ -338,7 +406,7 @@
+     unblock)
+ 		IptablesUNBLOCK "$@"
+ 		rc=$?
+-		run_tickle_tcp
++		tickle_remote
+ 		#ignore run_tickle_tcp exit code!
+ 		return $rc
+ 		;;
+@@ -411,6 +479,17 @@
+ 	exit $OCF_ERR_CONFIGURED
+ 	;; 
+   esac
++
++  if ocf_is_true $reset_local_on_unblock_stop; then
++	if [ $action != unblock ] ; then
++		ocf_log err "reset_local_on_unblock_stop is only relevant with action=unblock"
++		exit $OCF_ERR_CONFIGURED
++	fi
++	if [ -z $OCF_RESKEY_tickle_dir ] ; then
++		ocf_log warn "reset_local_on_unblock_stop works best with tickle_dir enabled as well"
++	fi
++  fi
++
+   return $OCF_SUCCESS
+ }
+ 
+@@ -451,6 +530,7 @@
+ portno=$OCF_RESKEY_portno
+ action=$OCF_RESKEY_action
+ ip=$OCF_RESKEY_ip
++reset_local_on_unblock_stop=$OCF_RESKEY_reset_local_on_unblock_stop
+ 
+ case $1 in
+   start)	

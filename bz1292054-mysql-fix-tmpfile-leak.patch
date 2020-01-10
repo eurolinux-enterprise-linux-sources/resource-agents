@@ -1,0 +1,28 @@
+From 17f4c690182c8b50d7b8613aff238edc7b770d8d Mon Sep 17 00:00:00 2001
+From: higashik <kazuh@goo.jp>
+Date: Wed, 16 Dec 2015 14:08:31 +0900
+Subject: [PATCH] Low: mysql: tmpfile is leaking when set the OCF_CHECK_LEVEL
+ to 10
+
+The function get_slave_info() makes a tmpfile that named /var/run/resource-agents/check_slave.mysql.XXXXXX.
+This tmpfile is removed by the function that called a get_slave_info().
+
+However, The function is_slave() calls the get_slave_info() , but does not remove tmpfile.
+When OCF_CHECK_LEVEL is set to 10, in the Slave node, the function is_slave() will be called from the mysql_monitor.
+So, the number of the tmpfile continues increasing in every 10 seconds in the Slave node.
+---
+ heartbeat/mysql | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/heartbeat/mysql b/heartbeat/mysql
+index 5f341fb..e2d54dd 100755
+--- a/heartbeat/mysql
++++ b/heartbeat/mysql
+@@ -347,6 +347,7 @@ is_slave() {
+    
+     get_slave_info
+     rc=$?
++    rm -f $tmpfile
+ 
+     if [ $rc -eq 0 ]; then
+        # show slave status is not empty
