@@ -1,0 +1,23 @@
+From 9eafa6e3dd9735bdd1e4e447d9e8c3d4da1e9c30 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Thu, 27 Jun 2019 10:38:46 +0200
+Subject: [PATCH] SAPHanaSR-monitor: fix tolower() issue, which seems to be an
+ artifact from a2p (Awk to Perl)
+
+---
+ SAPHana/bin/SAPHanaSR-monitor | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/SAPHanaSR-ScaleOut-a77e8c6/SAPHana/bin/SAPHanaSR-monitor b/SAPHanaSR-ScaleOut-a77e8c6/SAPHana/bin/SAPHanaSR-monitor
+index 737545c..da6bf08 100755
+--- a/SAPHanaSR-ScaleOut-a77e8c6/SAPHana/bin/SAPHanaSR-monitor
++++ b/SAPHanaSR-ScaleOut-a77e8c6/SAPHana/bin/SAPHanaSR-monitor
+@@ -219,7 +219,7 @@ sub processMonitor() {
+     #
+     $sid=$sids[0];   # currently ony one sid is supported
+     ( $sid, $ino ) = split(":", $sid);
+-    $sid=tolower("$sid");
++    $sid=lc("$sid");
+     get_hana_attributes($sid, \%Host, \%HName, \%Global, \%GName, \%Site,   \%SName);
+     if ( keys(%Host) == 0 ) {
+         printf "No attributes found for SID=%s\n", $sid;

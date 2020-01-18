@@ -1,0 +1,161 @@
+From 1c23bbf9700eda44d0d64f34bcb538d7b9e4f6f6 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Tue, 4 Sep 2018 09:19:59 +0200
+Subject: [PATCH] timeout/interval: add "s" suffix where it's missing
+
+---
+ .gitignore                    |  1 +
+ heartbeat/SAPInstance         |  2 +-
+ heartbeat/aliyun-vpc-move-ip  | 10 +++++-----
+ heartbeat/gcp-vpc-move-vip.in | 10 +++++-----
+ heartbeat/mariadb.in          | 22 +++++++++++-----------
+ heartbeat/sybaseASE.in        | 32 ++++++++++++++++----------------
+ 6 files changed, 39 insertions(+), 38 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+index bbff032c3..3a9be36e5 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -44,6 +44,7 @@ heartbeat/ocf-directories
+ heartbeat/ocf-shellfuncs
+ heartbeat/send_ua
+ heartbeat/shellfuncs
++heartbeat/*.pyc
+ include/agent_config.h
+ include/config.h
+ include/config.h.in
+diff --git a/heartbeat/aliyun-vpc-move-ip b/heartbeat/aliyun-vpc-move-ip
+index e27952adb..ed446c9c1 100755
+--- a/heartbeat/aliyun-vpc-move-ip
++++ b/heartbeat/aliyun-vpc-move-ip
+@@ -155,11 +155,11 @@ Valid Aliyun CLI profile name
+ </parameter>
+ </parameters>
+ <actions>
+-<action name="start" timeout="180" />
+-<action name="stop" timeout="180" />
+-<action name="monitor" depth="0" timeout="30" interval="30" />
+-<action name="validate-all" timeout="5" />
+-<action name="meta-data" timeout="5" />
++<action name="start" timeout="180s" />
++<action name="stop" timeout="180s" />
++<action name="monitor" depth="0" timeout="30s" interval="30s" />
++<action name="validate-all" timeout="5s" />
++<action name="meta-data" timeout="5s" />
+ </actions>
+ </resource-agent>
+ END
+diff --git a/heartbeat/gcp-vpc-move-vip.in b/heartbeat/gcp-vpc-move-vip.in
+index ba61193b6..31d84643a 100755
+--- a/heartbeat/gcp-vpc-move-vip.in
++++ b/heartbeat/gcp-vpc-move-vip.in
+@@ -77,11 +77,11 @@ METADATA = \
+     </parameter>
+   </parameters>
+   <actions>
+-    <action name="start" timeout="300" />
+-    <action name="stop" timeout="15" />
+-    <action name="monitor" timeout="15" interval="60" depth="0" />
+-    <action name="meta-data" timeout="15" />
+-    <action name="validate-all" timeout="15" />
++    <action name="start" timeout="300s" />
++    <action name="stop" timeout="15s" />
++    <action name="monitor" timeout="15s" interval="60s" depth="0" />
++    <action name="meta-data" timeout="15s" />
++    <action name="validate-all" timeout="15s" />
+   </actions>
+ </resource-agent>'''
+ 
+diff --git a/heartbeat/mariadb.in b/heartbeat/mariadb.in
+index 860fea7fd..c1969d70e 100644
+--- a/heartbeat/mariadb.in
++++ b/heartbeat/mariadb.in
+@@ -250,17 +250,17 @@ The port on which the Master MariaDB instance is listening.
+ </parameters>
+ 
+ <actions>
+-<action name="start" timeout="120" />
+-<action name="stop" timeout="120" />
+-<action name="status" timeout="60" />
+-<action name="monitor" depth="0" timeout="30" interval="20" />
+-<action name="monitor" role="Master" depth="0" timeout="30" interval="10" />
+-<action name="monitor" role="Slave" depth="0" timeout="30" interval="30" />
+-<action name="promote" timeout="120" />
+-<action name="demote" timeout="120" />
+-<action name="notify" timeout="90" />
+-<action name="validate-all" timeout="5" />
+-<action name="meta-data" timeout="5" />
++<action name="start" timeout="120s" />
++<action name="stop" timeout="120s" />
++<action name="status" timeout="60s" />
++<action name="monitor" depth="0" timeout="30s" interval="20s" />
++<action name="monitor" role="Master" depth="0" timeout="30s" interval="10s" />
++<action name="monitor" role="Slave" depth="0" timeout="30s" interval="30s" />
++<action name="promote" timeout="120s" />
++<action name="demote" timeout="120s" />
++<action name="notify" timeout="90s" />
++<action name="validate-all" timeout="5s" />
++<action name="meta-data" timeout="5s" />
+ </actions>
+ </resource-agent>
+ END
+diff --git a/heartbeat/sybaseASE.in b/heartbeat/sybaseASE.in
+index a4a0b7a0c..b4809ea23 100755
+--- a/heartbeat/sybaseASE.in
++++ b/heartbeat/sybaseASE.in
+@@ -26,19 +26,19 @@
+ #         /$sybase_home/$sybase_ase/install/RUN_$server_name
+ #
+ # (2) You can customize the interval value in the meta-data section if needed:
+-#                <action name="start" timeout="300" />
+-#                <action name="stop" timeout="300" />
++#                <action name="start" timeout="300s" />
++#                <action name="stop" timeout="300s" />
+ #
+ #                <!-- Checks to see if it''s mounted in the right place -->
+-#                <action name="status"  interval="30" timeout="100" />
+-#                <action name="monitor" interval="30" timeout="100" />
++#                <action name="status"  interval="30s" timeout="100s" />
++#                <action name="monitor" interval="30s" timeout="100s" />
+ #
+ #                <!--Checks to see if we can read from the mountpoint -->
+-#                <action name="status" depth="10" timeout="100" interval="120" />
+-#                <action name="monitor" depth="10" timeout="100" interval="120" />
++#                <action name="status" depth="10" timeout="100s" interval="120s" />
++#                <action name="monitor" depth="10" timeout="100s" interval="120s" />
+ #
+-#                <action name="meta-data" timeout="5" />
+-#                <action name="validate-all" timeout="5" />
++#                <action name="meta-data" timeout="5s" />
++#                <action name="validate-all" timeout="5s" />
+ #     The timeout value is not supported by Redhat in RHCS5.0.
+ #
+ 
+@@ -226,19 +226,19 @@ meta_data()
+ 	</parameters>
+ 
+ 	<actions>
+-		<action name="start" timeout="300" />
+-		<action name="stop" timeout="300" />
++		<action name="start" timeout="300s" />
++		<action name="stop" timeout="300s" />
+ 
+ 		<!-- Checks to see if it''s mounted in the right place -->
+-		<action name="status"  interval="30" timeout="100" />
+-		<action name="monitor" interval="30" timeout="100" />
++		<action name="status"  interval="30s" timeout="100s" />
++		<action name="monitor" interval="30s" timeout="100s" />
+ 
+ 		<!--Checks to see if we can read from the mountpoint -->
+-		<action name="status" depth="10" timeout="100" interval="120" />
+-		<action name="monitor" depth="10" timeout="100" interval="120" />
++		<action name="status" depth="10" timeout="100" interval="120s" />
++		<action name="monitor" depth="10" timeout="100" interval="120s" />
+ 
+-		<action name="meta-data" timeout="5" />
+-		<action name="validate-all" timeout="5" />
++		<action name="meta-data" timeout="5s" />
++		<action name="validate-all" timeout="5s" />
+ 	</actions>
+ </resource-agent>
+ EOT

@@ -1,0 +1,100 @@
+From c6b0104ec21a5f4ddbc3c0151a587fed2a35b773 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 20 May 2016 15:47:33 +0200
+Subject: [PATCH 1/2] nfsserver: mount based on rpcpipefs_dir variable
+
+---
+ heartbeat/nfsserver | 24 ++++++++++++------------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/heartbeat/nfsserver b/heartbeat/nfsserver
+index 3d036a98a..479082169 100755
+--- a/heartbeat/nfsserver
++++ b/heartbeat/nfsserver
+@@ -177,14 +177,8 @@ esac
+ fp="$OCF_RESKEY_nfs_shared_infodir"
+ : ${OCF_RESKEY_nfs_notify_cmd="$DEFAULT_NOTIFY_CMD"}
+ : ${OCF_RESKEY_nfs_notify_foreground="$DEFAULT_NOTIFY_FOREGROUND"}
+-
+-if [ -z ${OCF_RESKEY_rpcpipefs_dir} ]; then
+-	rpcpipefs_make_dir=$fp/rpc_pipefs
+-	rpcpipefs_umount_dir=${DEFAULT_RPCPIPEFS_DIR}
+-else
+-	rpcpipefs_make_dir=${OCF_RESKEY_rpcpipefs_dir}
+-	rpcpipefs_umount_dir=${OCF_RESKEY_rpcpipefs_dir}
+-fi
++: ${OCF_RESKEY_rpcpipefs_dir="$DEFAULT_RPCPIPEFS_DIR"}
++OCF_RESKEY_rpcpipefs_dir=${OCF_RESKEY_rpcpipefs_dir%/}
+ 
+ # Use statd folder if it exists
+ if [ -d "/var/lib/nfs/statd" ]; then
+@@ -409,7 +403,7 @@ prepare_directory ()
+ 	fi
+ 
+ 	[ -d "$fp" ] || mkdir -p $fp
+-	[ -d "$rpcpipefs_make_dir" ] || mkdir -p $rpcpipefs_make_dir
++	[ -d "$OCF_RESKEY_rpcpipefs_dir" ] || mkdir -p $OCF_RESKEY_rpcpipefs_dir
+ 	[ -d "$fp/v4recovery" ] || mkdir -p $fp/v4recovery
+ 
+ 	[ -d "$fp/$STATD_DIR" ] || mkdir -p "$fp/$STATD_DIR"
+@@ -453,9 +447,13 @@ bind_tree ()
+ 
+ unbind_tree ()
+ {
+-	if `mount | grep -q " on $rpcpipefs_umount_dir"`; then
+-		umount -t rpc_pipefs $rpcpipefs_umount_dir
+-	fi
++	local i=1
++	while `mount | grep -q " on $OCF_RESKEY_rpcpipefs_dir"` && [ "$i" -le 10 ]; do
++		ocf_log info "Stop: umount ($i/10 attempts)"
++		umount -t rpc_pipefs $OCF_RESKEY_rpcpipefs_dir
++		sleep 1
++		i=$((i + 1))
++	done
+ 	if is_bound /var/lib/nfs; then
+ 		umount /var/lib/nfs
+ 	fi
+@@ -617,6 +615,8 @@ nfsserver_start ()
+ 	prepare_directory
+ 	bind_tree
+ 
++	mount -t rpc_pipefs sunrpc $OCF_RESKEY_rpcpipefs_dir
++
+ 	# remove the sm-notify pid so sm-notify will be allowed to run again without requiring a reboot.
+ 	rm -f /var/run/sm-notify.pid
+ 	#
+
+From c92e8c84b73dde3254f53665a0ef3603418538dc Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Thu, 27 Sep 2018 16:09:09 +0200
+Subject: [PATCH 2/2] nfsserver: only mount rpc_pipefs if it's not mounted
+
+also added space to avoid matching similarly named mounts
+---
+ heartbeat/nfsserver | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/heartbeat/nfsserver b/heartbeat/nfsserver
+index 479082169..5412f391b 100755
+--- a/heartbeat/nfsserver
++++ b/heartbeat/nfsserver
+@@ -448,7 +448,7 @@ bind_tree ()
+ unbind_tree ()
+ {
+ 	local i=1
+-	while `mount | grep -q " on $OCF_RESKEY_rpcpipefs_dir"` && [ "$i" -le 10 ]; do
++	while `mount | grep -q " on $OCF_RESKEY_rpcpipefs_dir "` && [ "$i" -le 10 ]; do
+ 		ocf_log info "Stop: umount ($i/10 attempts)"
+ 		umount -t rpc_pipefs $OCF_RESKEY_rpcpipefs_dir
+ 		sleep 1
+@@ -615,7 +615,9 @@ nfsserver_start ()
+ 	prepare_directory
+ 	bind_tree
+ 
+-	mount -t rpc_pipefs sunrpc $OCF_RESKEY_rpcpipefs_dir
++	if ! `mount | grep -q " on $OCF_RESKEY_rpcpipefs_dir "`; then
++		mount -t rpc_pipefs sunrpc $OCF_RESKEY_rpcpipefs_dir
++	fi
+ 
+ 	# remove the sm-notify pid so sm-notify will be allowed to run again without requiring a reboot.
+ 	rm -f /var/run/sm-notify.pid

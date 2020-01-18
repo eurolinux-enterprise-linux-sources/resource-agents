@@ -1,0 +1,12 @@
+diff -uNr a/bundled/google-cloud-sdk/bin/gcloud b/bundled/google-cloud-sdk/bin/gcloud
+--- a/bundled/google-cloud-sdk/bin/gcloud	2018-06-18 14:30:10.000000000 +0200
++++ b/bundled/google-cloud-sdk/bin/gcloud	2018-06-25 13:12:56.057000620 +0200
+@@ -64,6 +64,8 @@
+ }
+ CLOUDSDK_ROOT_DIR=$(_cloudsdk_root_dir "$0")
+ 
++CLOUDSDK_PYTHON_SITEPACKAGES=1
++
+ # if CLOUDSDK_PYTHON is empty
+ if [ -z "$CLOUDSDK_PYTHON" ]; then
+   # if python2 exists then plain python may point to a version != 2

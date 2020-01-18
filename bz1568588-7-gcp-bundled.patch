@@ -1,0 +1,35 @@
+diff -uNr a/heartbeat/gcp-vpc-move-ip.in b/heartbeat/gcp-vpc-move-ip.in
+--- a/heartbeat/gcp-vpc-move-ip.in	2018-07-23 12:38:54.098572982 +0200
++++ b/heartbeat/gcp-vpc-move-ip.in	2018-07-23 12:39:31.062083667 +0200
+@@ -36,7 +36,7 @@
+ . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+ 
+ # Defaults
+-OCF_RESKEY_gcloud_default="/usr/bin/gcloud"
++OCF_RESKEY_gcloud_default="/usr/bin/gcloud-ra"
+ OCF_RESKEY_configuration_default="default"
+ OCF_RESKEY_vpc_network_default="default"
+ OCF_RESKEY_interface_default="eth0"
+diff -uNr a/heartbeat/gcp-vpc-move-route.in b/heartbeat/gcp-vpc-move-route.in
+--- a/heartbeat/gcp-vpc-move-route.in	2018-07-23 12:38:54.100572956 +0200
++++ b/heartbeat/gcp-vpc-move-route.in	2018-07-23 12:40:39.174182018 +0200
+@@ -45,6 +45,8 @@
+ from ocf import *
+ 
+ try:
++  sys.path.insert(0, '/usr/lib/resource-agents/bundled/google-cloud-sdk/lib/third_party')
++  sys.path.insert(0, '/usr/lib/resource-agents/bundled')
+   import googleapiclient.discovery
+   import pyroute2
+ except ImportError:
+diff -uNr a/heartbeat/gcp-vpc-move-vip.in b/heartbeat/gcp-vpc-move-vip.in
+--- a/heartbeat/gcp-vpc-move-vip.in	2018-07-23 12:38:54.105572889 +0200
++++ b/heartbeat/gcp-vpc-move-vip.in	2018-07-23 12:39:31.063083654 +0200
+@@ -28,6 +28,7 @@
+ from ocf import *
+ 
+ try:
++  sys.path.insert(0, '/usr/lib/resource-agents/bundled/google-cloud-sdk/lib/third_party')
+   import googleapiclient.discovery
+ except ImportError:
+   pass

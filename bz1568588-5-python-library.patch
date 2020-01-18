@@ -1,0 +1,600 @@
+From 13ae97dec5754642af4d0d0edc03d9290e792e7f Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Thu, 19 Jul 2018 16:12:35 +0200
+Subject: [PATCH 1/5] Add Python library
+
+---
+ heartbeat/Makefile.am |   3 +-
+ heartbeat/ocf.py      | 136 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 138 insertions(+), 1 deletion(-)
+ create mode 100644 heartbeat/ocf.py
+
+diff --git a/heartbeat/Makefile.am b/heartbeat/Makefile.am
+index d4750bf09..1333f8feb 100644
+--- a/heartbeat/Makefile.am
++++ b/heartbeat/Makefile.am
+@@ -185,7 +185,8 @@ ocfcommon_DATA		= ocf-shellfuncs 	\
+ 			  ora-common.sh		\
+ 			  mysql-common.sh	\
+ 			  nfsserver-redhat.sh	\
+-			  findif.sh
++			  findif.sh		\
++			  ocf.py
+ 
+ # Legacy locations
+ hbdir			= $(sysconfdir)/ha.d
+diff --git a/heartbeat/ocf.py b/heartbeat/ocf.py
+new file mode 100644
+index 000000000..12be7a2a4
+--- /dev/null
++++ b/heartbeat/ocf.py
+@@ -0,0 +1,136 @@
++#
++# Copyright (c) 2016 Red Hat, Inc, Oyvind Albrigtsen
++#                    All Rights Reserved.
++#
++#
++# This library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++#
++# This library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++#
++# You should have received a copy of the GNU Lesser General Public
++# License along with this library; if not, write to the Free Software
++# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
++# 
++
++import sys, os, logging, syslog
++
++argv=sys.argv
++env=os.environ
++
++#
++# 	Common variables for the OCF Resource Agents supplied by
++# 	heartbeat.
++#
++
++OCF_SUCCESS=0
++OCF_ERR_GENERIC=1
++OCF_ERR_ARGS=2
++OCF_ERR_UNIMPLEMENTED=3
++OCF_ERR_PERM=4
++OCF_ERR_INSTALLED=5
++OCF_ERR_CONFIGURED=6
++OCF_NOT_RUNNING=7
++
++# Non-standard values.
++#
++# OCF does not include the concept of master/slave resources so we
++#   need to extend it so we can discover a resource's complete state.
++#
++# OCF_RUNNING_MASTER:  
++#    The resource is in "master" mode and fully operational
++# OCF_FAILED_MASTER:
++#    The resource is in "master" mode but in a failed state
++# 
++# The extra two values should only be used during a probe.
++#
++# Probes are used to discover resources that were started outside of
++#    the CRM and/or left behind if the LRM fails.
++# 
++# They can be identified in RA scripts by checking for:
++#   [ "${__OCF_ACTION}" = "monitor" -a "${OCF_RESKEY_CRM_meta_interval}" = "0" ]
++# 
++# Failed "slaves" should continue to use: OCF_ERR_GENERIC
++# Fully operational "slaves" should continue to use: OCF_SUCCESS
++#
++OCF_RUNNING_MASTER=8
++OCF_FAILED_MASTER=9
++
++
++## Own logger handler that uses old-style syslog handler as otherwise
++## everything is sourced from /dev/syslog
++class SyslogLibHandler(logging.StreamHandler):
++	"""
++	A handler class that correctly push messages into syslog
++	"""
++	def emit(self, record):
++		syslog_level = {
++			logging.CRITICAL:syslog.LOG_CRIT,
++			logging.ERROR:syslog.LOG_ERR,
++			logging.WARNING:syslog.LOG_WARNING,
++			logging.INFO:syslog.LOG_INFO,
++			logging.DEBUG:syslog.LOG_DEBUG,
++			logging.NOTSET:syslog.LOG_DEBUG,
++		}[record.levelno]
++
++		msg = self.format(record)
++
++		# syslog.syslog can not have 0x00 character inside or exception
++		# is thrown
++		syslog.syslog(syslog_level, msg.replace("\x00","\n"))
++		return
++
++
++OCF_RESOURCE_INSTANCE = env.get("OCF_RESOURCE_INSTANCE")
++
++HA_DEBUG = env.get("HA_debug", 0)
++HA_DATEFMT = env.get("HA_DATEFMT", "%b %d %T ")
++HA_LOGFACILITY = env.get("HA_LOGFACILITY")
++HA_LOGFILE = env.get("HA_LOGFILE")
++HA_DEBUGLOG = env.get("HA_DEBUGLOG")
++
++log = logging.getLogger(os.path.basename(argv[0]))
++log.setLevel(logging.DEBUG)
++
++## add logging to stderr
++if sys.stdout.isatty():
++	seh = logging.StreamHandler(stream=sys.stderr)
++	if HA_DEBUG == 0:
++		seh.setLevel(logging.WARNING)
++	sehformatter = logging.Formatter('%(filename)s(%(OCF_RESOURCE_INSTANCE)s)[%(process)s]:\t%(asctime)s%(levelname)s: %(message)s', datefmt=HA_DATEFMT)
++	seh.setFormatter(sehformatter)
++	log.addHandler(seh)
++
++## add logging to syslog
++if HA_LOGFACILITY:
++	slh = SyslogLibHandler()
++	if HA_DEBUG == 0:
++		slh.setLevel(logging.WARNING)
++	slhformatter = logging.Formatter('%(levelname)s: %(message)s')
++	slh.setFormatter(slhformatter)
++	log.addHandler(slh)
++
++## add logging to file
++if HA_LOGFILE:
++	lfh = logging.FileHandler(HA_LOGFILE)
++	if HA_DEBUG == 0:
++		lfh.setLevel(logging.WARNING)
++	lfhformatter = logging.Formatter('%(filename)s(%(OCF_RESOURCE_INSTANCE)s)[%(process)s]:\t%(asctime)s%(levelname)s: %(message)s', datefmt=HA_DATEFMT)
++	lfh.setFormatter(lfhformatter)
++	log.addHandler(lfh)
++
++## add debug logging to file
++if HA_DEBUGLOG and HA_LOGFILE != HA_DEBUGLOG:
++	dfh = logging.FileHandler(HA_DEBUGLOG)
++	if HA_DEBUG == 0:
++		dfh.setLevel(logging.WARNING)
++	dfhformatter = logging.Formatter('%(filename)s(%(OCF_RESOURCE_INSTANCE)s)[%(process)s]:\t%(asctime)s%(levelname)s: %(message)s', datefmt=HA_DATEFMT)
++	dfh.setFormatter(dfhformatter)
++	log.addHandler(dfh)
++
++logger = logging.LoggerAdapter(log, {'OCF_RESOURCE_INSTANCE': OCF_RESOURCE_INSTANCE})
+
+From 2ade8dbf1f6f6d3889dd1ddbf40858edf10fbdc7 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Thu, 19 Jul 2018 16:20:39 +0200
+Subject: [PATCH 2/5] gcp-vpc-move-vip: use Python library
+
+---
+ heartbeat/gcp-vpc-move-vip.in | 42 +++++++++++++++++++++---------------------
+ 1 file changed, 21 insertions(+), 21 deletions(-)
+
+diff --git a/heartbeat/gcp-vpc-move-vip.in b/heartbeat/gcp-vpc-move-vip.in
+index af2080502..eb5bce6a8 100755
+--- a/heartbeat/gcp-vpc-move-vip.in
++++ b/heartbeat/gcp-vpc-move-vip.in
+@@ -22,6 +22,11 @@ import os
+ import sys
+ import time
+ 
++OCF_FUNCTIONS_DIR="%s/lib/heartbeat" % os.environ.get("OCF_ROOT")
++sys.path.append(OCF_FUNCTIONS_DIR)
++
++from ocf import *
++
+ try:
+   import googleapiclient.discovery
+ except ImportError:
+@@ -40,10 +45,6 @@ else:
+ CONN = None
+ THIS_VM = None
+ ALIAS = None
+-OCF_SUCCESS = 0
+-OCF_ERR_GENERIC = 1
+-OCF_ERR_CONFIGURED = 6
+-OCF_NOT_RUNNING = 7
+ METADATA_SERVER = 'http://metadata.google.internal/computeMetadata/v1/'
+ METADATA_HEADERS = {'Metadata-Flavor': 'Google'}
+ METADATA = \
+@@ -206,11 +207,11 @@ def gcp_alias_start(alias):
+   # If I already have the IP, exit. If it has an alias IP that isn't the VIP,
+   # then remove it
+   if my_alias == alias:
+-    logging.info(
++    logger.info(
+         '%s already has %s attached. No action required' % (THIS_VM, alias))
+     sys.exit(OCF_SUCCESS)
+   elif my_alias:
+-    logging.info('Removing %s from %s' % (my_alias, THIS_VM))
++    logger.info('Removing %s from %s' % (my_alias, THIS_VM))
+     set_alias(project, my_zone, THIS_VM, '')
+ 
+   # Loops through all hosts & remove the alias IP from the host that has it
+@@ -223,7 +224,7 @@ def gcp_alias_start(alias):
+     host_zone = get_zone(project, host)
+     host_alias = get_alias(project, host_zone, host)
+     if alias == host_alias:
+-      logging.info(
++      logger.info(
+           '%s is attached to %s - Removing all alias IP addresses from %s' %
+           (alias, host, host))
+       set_alias(project, host_zone, host, '')
+@@ -237,14 +238,14 @@ def gcp_alias_start(alias):
+   # Check the IP has been added
+   my_alias = get_localhost_alias()
+   if alias == my_alias:
+-    logging.info('Finished adding %s to %s' % (alias, THIS_VM))
++    logger.info('Finished adding %s to %s' % (alias, THIS_VM))
+   elif my_alias:
+-    logging.error(
++    logger.error(
+         'Failed to add IP. %s has an IP attached but it isn\'t %s' %
+         (THIS_VM, alias))
+     sys.exit(OCF_ERR_GENERIC)
+   else:
+-    logging.error('Failed to add IP address %s to %s' % (alias, THIS_VM))
++    logger.error('Failed to add IP address %s to %s' % (alias, THIS_VM))
+     sys.exit(OCF_ERR_GENERIC)
+ 
+ 
+@@ -254,14 +255,14 @@ def gcp_alias_stop(alias):
+   project = get_metadata('project/project-id')
+ 
+   if my_alias == alias:
+-    logging.info('Removing %s from %s' % (my_alias, THIS_VM))
++    logger.info('Removing %s from %s' % (my_alias, THIS_VM))
+     set_alias(project, my_zone, THIS_VM, '')
+ 
+ 
+ def gcp_alias_status(alias):
+   my_alias = get_localhost_alias()
+   if alias == my_alias:
+-    logging.info('%s has the correct IP address attached' % THIS_VM)
++    logger.info('%s has the correct IP address attached' % THIS_VM)
+   else:
+     sys.exit(OCF_NOT_RUNNING)
+ 
+@@ -275,25 +276,24 @@ def validate():
+   try:
+     CONN = googleapiclient.discovery.build('compute', 'v1')
+   except Exception as e:
+-    logging.error('Couldn\'t connect with google api: ' + str(e))
++    logger.error('Couldn\'t connect with google api: ' + str(e))
+     sys.exit(OCF_ERR_CONFIGURED)
+ 
+   try:
+     THIS_VM = get_metadata('instance/name')
+   except Exception as e:
+-    logging.error('Couldn\'t get instance name, is this running inside GCE?: ' + str(e))
++    logger.error('Couldn\'t get instance name, is this running inside GCE?: ' + str(e))
+     sys.exit(OCF_ERR_CONFIGURED)
+ 
+   ALIAS = os.environ.get('OCF_RESKEY_alias_ip')
+   if not ALIAS:
+-    logging.error('Missing alias_ip parameter')
++    logger.error('Missing alias_ip parameter')
+     sys.exit(OCF_ERR_CONFIGURED)
+ 
+ 
+ def configure_logs():
+   # Prepare logging
+-  logging.basicConfig(
+-      format='gcp:alias - %(levelname)s - %(message)s', level=logging.INFO)
++  global logger
+   logging.getLogger('googleapiclient').setLevel(logging.WARN)
+   logging_env = os.environ.get('OCF_RESKEY_stackdriver_logging')
+   if logging_env:
+@@ -307,10 +307,10 @@ def configure_logs():
+         handler.setLevel(logging.INFO)
+         formatter = logging.Formatter('gcp:alias "%(message)s"')
+         handler.setFormatter(formatter)
+-        root_logger = logging.getLogger()
+-        root_logger.addHandler(handler)
++        log.addHandler(handler)
++        logger = logging.LoggerAdapter(log, {'OCF_RESOURCE_INSTANCE': OCF_RESOURCE_INSTANCE})
+       except ImportError:
+-        logging.error('Couldn\'t import google.cloud.logging, '
++        logger.error('Couldn\'t import google.cloud.logging, '
+             'disabling Stackdriver-logging support')
+ 
+ 
+@@ -331,7 +331,7 @@ def main():
+   elif 'status' in sys.argv[1] or 'monitor' in sys.argv[1]:
+     gcp_alias_status(ALIAS)
+   else:
+-    logging.error('no such function %s' % str(sys.argv[1]))
++    logger.error('no such function %s' % str(sys.argv[1]))
+ 
+ 
+ if __name__ == "__main__":
+
+From 9e9ea17c42df27d4c13fed9badba295df48437f2 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 20 Jul 2018 13:27:42 +0200
+Subject: [PATCH 3/5] gcp-vpc-move-vip: moved alias-parameters to top of
+ metadata
+
+---
+ heartbeat/gcp-vpc-move-vip.in | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/heartbeat/gcp-vpc-move-vip.in b/heartbeat/gcp-vpc-move-vip.in
+index eb5bce6a8..ba61193b6 100755
+--- a/heartbeat/gcp-vpc-move-vip.in
++++ b/heartbeat/gcp-vpc-move-vip.in
+@@ -55,6 +55,16 @@ METADATA = \
+   <longdesc lang="en">Floating IP Address on Google Cloud Platform - Using Alias IP address functionality to attach a secondary IP address to a running instance</longdesc>
+   <shortdesc lang="en">Floating IP Address on Google Cloud Platform</shortdesc>
+   <parameters>
++    <parameter name="alias_ip" unique="1" required="1">
++      <longdesc lang="en">IP Address to be added including CIDR. E.g 192.168.0.1/32</longdesc>
++      <shortdesc lang="en">IP Address to be added including CIDR. E.g 192.168.0.1/32</shortdesc>
++      <content type="string" default="" />
++    </parameter>
++    <parameter name="alias_range_name" unique="1" required="0">
++      <longdesc lang="en">Subnet name for the Alias IP</longdesc>
++      <shortdesc lang="en">Subnet name for the Alias IP</shortdesc>
++      <content type="string" default="" />
++    </parameter>
+     <parameter name="hostlist" unique="1" required="0">
+       <longdesc lang="en">List of hosts in the cluster</longdesc>
+       <shortdesc lang="en">Host list</shortdesc>
+@@ -65,16 +75,6 @@ METADATA = \
+       <shortdesc lang="en">Stackdriver-logging support</shortdesc>
+       <content type="boolean" default="" />
+     </parameter>
+-    <parameter name="alias_ip" unique="1" required="1">
+-      <longdesc lang="en">IP Address to be added including CIDR. E.g 192.168.0.1/32</longdesc>
+-      <shortdesc lang="en">IP Address to be added including CIDR. E.g 192.168.0.1/32</shortdesc>
+-      <content type="string" default="" />
+-    </parameter>
+-    <parameter name="alias_range_name" unique="1" required="0">
+-      <longdesc lang="en">Subnet name for the Alias IP2</longdesc>
+-      <shortdesc lang="en">Subnet name for the Alias IP</shortdesc>
+-      <content type="string" default="" />
+-    </parameter>
+   </parameters>
+   <actions>
+     <action name="start" timeout="300" />
+
+From 716d69040dba7a769efb5a60eca934fdd65585f2 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Mon, 23 Jul 2018 11:17:00 +0200
+Subject: [PATCH 4/5] gcp-vpc-move-route: use Python library
+
+---
+ heartbeat/gcp-vpc-move-route.in | 58 ++++++++++++++++++++---------------------
+ 1 file changed, 28 insertions(+), 30 deletions(-)
+
+diff --git a/heartbeat/gcp-vpc-move-route.in b/heartbeat/gcp-vpc-move-route.in
+index 566a70f86..125289d86 100644
+--- a/heartbeat/gcp-vpc-move-route.in
++++ b/heartbeat/gcp-vpc-move-route.in
+@@ -39,6 +39,11 @@ import os
+ import sys
+ import time
+ 
++OCF_FUNCTIONS_DIR="%s/lib/heartbeat" % os.environ.get("OCF_ROOT")
++sys.path.append(OCF_FUNCTIONS_DIR)
++
++from ocf import *
++
+ try:
+   import googleapiclient.discovery
+   import pyroute2
+@@ -55,12 +60,6 @@ else:
+   import urllib2 as urlrequest
+ 
+ 
+-OCF_SUCCESS = 0
+-OCF_ERR_GENERIC = 1
+-OCF_ERR_UNIMPLEMENTED = 3
+-OCF_ERR_PERM = 4
+-OCF_ERR_CONFIGURED = 6
+-OCF_NOT_RUNNING = 7
+ GCP_API_URL_PREFIX = 'https://www.googleapis.com/compute/v1'
+ METADATA_SERVER = 'http://metadata.google.internal/computeMetadata/v1/'
+ METADATA_HEADERS = {'Metadata-Flavor': 'Google'}
+@@ -199,18 +198,18 @@ def get_metadata(metadata_key, params=None, timeout=None):
+ 
+ def validate(ctx):
+   if os.geteuid() != 0:
+-    logging.error('You must run this agent as root')
++    logger.error('You must run this agent as root')
+     sys.exit(OCF_ERR_PERM)
+ 
+   try:
+     ctx.conn = googleapiclient.discovery.build('compute', 'v1')
+   except Exception as e:
+-    logging.error('Couldn\'t connect with google api: ' + str(e))
++    logger.error('Couldn\'t connect with google api: ' + str(e))
+     sys.exit(OCF_ERR_CONFIGURED)
+ 
+   ctx.ip = os.environ.get('OCF_RESKEY_ip')
+   if not ctx.ip:
+-    logging.error('Missing ip parameter')
++    logger.error('Missing ip parameter')
+     sys.exit(OCF_ERR_CONFIGURED)
+ 
+   try:
+@@ -218,7 +217,7 @@ def validate(ctx):
+     ctx.zone = get_metadata('instance/zone').split('/')[-1]
+     ctx.project = get_metadata('project/project-id')
+   except Exception as e:
+-    logging.error(
++    logger.error(
+         'Instance information not found. Is this a GCE instance ?: %s', str(e))
+     sys.exit(OCF_ERR_CONFIGURED)
+ 
+@@ -234,7 +233,7 @@ def validate(ctx):
+   atexit.register(ctx.iproute.close)
+   idxs = ctx.iproute.link_lookup(ifname=ctx.interface)
+   if not idxs:
+-    logging.error('Network interface not found')
++    logger.error('Network interface not found')
+     sys.exit(OCF_ERR_CONFIGURED)
+   ctx.iface_idx = idxs[0]
+ 
+@@ -246,7 +245,7 @@ def check_conflicting_routes(ctx):
+   response = request.execute()
+   route_list = response.get('items', None)
+   if route_list:
+-    logging.error(
++    logger.error(
+         'Conflicting unnmanaged routes for destination %s/32 in VPC %s found : %s',
+         ctx.ip, ctx.vpc_network, str(route_list))
+     sys.exit(OCF_ERR_CONFIGURED)
+@@ -258,7 +257,7 @@ def route_release(ctx):
+ 
+ 
+ def ip_monitor(ctx):
+-  logging.info('IP monitor: checking local network configuration')
++  logger.info('IP monitor: checking local network configuration')
+ 
+   def address_filter(addr):
+     for attr in addr['attrs']:
+@@ -271,12 +270,12 @@ def ip_monitor(ctx):
+   route = ctx.iproute.get_addr(
+       index=ctx.iface_idx, match=address_filter)
+   if not route:
+-    logging.warn(
++    logger.warning(
+         'The floating IP %s is not locally configured on this instance (%s)',
+         ctx.ip, ctx.instance)
+     return OCF_NOT_RUNNING
+ 
+-  logging.debug(
++  logger.debug(
+       'The floating IP %s is correctly configured on this instance (%s)',
+       ctx.ip, ctx.instance)
+   return OCF_SUCCESS
+@@ -287,7 +286,7 @@ def ip_release(ctx):
+ 
+ 
+ def ip_and_route_start(ctx):
+-  logging.info('Bringing up the floating IP %s', ctx.ip)
++  logger.info('Bringing up the floating IP %s', ctx.ip)
+ 
+   # Add a new entry in the routing table
+   # If the route entry exists and is pointing to another instance, take it over
+@@ -322,7 +321,7 @@ def ip_and_route_start(ctx):
+       request.execute()
+     except googleapiclient.errors.HttpError as e:
+       if e.resp.status == 404:
+-        logging.error('VPC network not found')
++        logger.error('VPC network not found')
+         sys.exit(OCF_ERR_CONFIGURED)
+       else:
+         raise
+@@ -336,11 +335,11 @@ def ip_and_route_start(ctx):
+ 
+   ctx.iproute.addr('add', index=ctx.iface_idx, address=ctx.ip, mask=32)
+   ctx.iproute.link('set', index=ctx.iface_idx, state='up')
+-  logging.info('Successfully brought up the floating IP %s', ctx.ip)
++  logger.info('Successfully brought up the floating IP %s', ctx.ip)
+ 
+ 
+ def route_monitor(ctx):
+-  logging.info('GCP route monitor: checking route table')
++  logger.info('GCP route monitor: checking route table')
+ 
+   # Ensure that there is no route that we are not aware of that is also handling our IP
+   check_conflicting_routes
+@@ -360,39 +359,38 @@ def route_monitor(ctx):
+   instance_url = '%s/projects/%s/zones/%s/instances/%s' % (
+       GCP_API_URL_PREFIX, ctx.project, ctx.zone, ctx.instance)
+   if routed_to_instance != instance_url:
+-    logging.warn(
++    logger.warning(
+         'The floating IP %s is not routed to this instance (%s) but to instance %s',
+         ctx.ip, ctx.instance, routed_to_instance.split('/')[-1])
+     return OCF_NOT_RUNNING
+ 
+-  logging.debug(
++  logger.debug(
+       'The floating IP %s is correctly routed to this instance (%s)',
+       ctx.ip, ctx.instance)
+   return OCF_SUCCESS
+ 
+ 
+ def ip_and_route_stop(ctx):
+-  logging.info('Bringing down the floating IP %s', ctx.ip)
++  logger.info('Bringing down the floating IP %s', ctx.ip)
+ 
+   # Delete the route entry
+   # If the route entry exists and is pointing to another instance, don't touch it
+   if route_monitor(ctx) == OCF_NOT_RUNNING:
+-    logging.info(
++    logger.info(
+         'The floating IP %s is already not routed to this instance (%s)',
+         ctx.ip, ctx.instance)
+   else:
+     route_release(ctx)
+ 
+   if ip_monitor(ctx) == OCF_NOT_RUNNING:
+-    logging.info('The floating IP %s is already down', ctx.ip)
++    logger.info('The floating IP %s is already down', ctx.ip)
+   else:
+     ip_release(ctx)
+ 
+ 
+ def configure_logs(ctx):
+   # Prepare logging
+-  logging.basicConfig(
+-      format='gcp:route - %(levelname)s - %(message)s', level=logging.INFO)
++  global logger
+   logging.getLogger('googleapiclient').setLevel(logging.WARN)
+   logging_env = os.environ.get('OCF_RESKEY_stackdriver_logging')
+   if logging_env:
+@@ -406,10 +404,10 @@ def configure_logs(ctx):
+         handler.setLevel(logging.INFO)
+         formatter = logging.Formatter('gcp:route "%(message)s"')
+         handler.setFormatter(formatter)
+-        root_logger = logging.getLogger()
+-        root_logger.addHandler(handler)
++        log.addHandler(handler)
++        logger = logging.LoggerAdapter(log, {'OCF_RESOURCE_INSTANCE': OCF_RESOURCE_INSTANCE})
+       except ImportError:
+-        logging.error('Couldn\'t import google.cloud.logging, '
++        logger.error('Couldn\'t import google.cloud.logging, '
+             'disabling Stackdriver-logging support')
+ 
+ 
+@@ -434,7 +432,7 @@ def main():
+   else:
+     usage = 'usage: %s {start|stop|monitor|status|meta-data|validate-all}' % \
+         os.path.basename(sys.argv[0])
+-    logging.error(usage)
++    logger.error(usage)
+     sys.exit(OCF_ERR_UNIMPLEMENTED)
+ 
+ 
+
+From 6ec7e87693a51cbb16a1822e6d15f1dbfc11f8e6 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Mon, 23 Jul 2018 15:55:48 +0200
+Subject: [PATCH 5/5] Python: add logging.basicConfig() to support background
+ logging
+
+---
+ heartbeat/ocf.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/heartbeat/ocf.py b/heartbeat/ocf.py
+index 12be7a2a4..36e7ccccd 100644
+--- a/heartbeat/ocf.py
++++ b/heartbeat/ocf.py
+@@ -94,6 +94,7 @@ def emit(self, record):
+ HA_LOGFILE = env.get("HA_LOGFILE")
+ HA_DEBUGLOG = env.get("HA_DEBUGLOG")
+ 
++logging.basicConfig()
+ log = logging.getLogger(os.path.basename(argv[0]))
+ log.setLevel(logging.DEBUG)
+ 

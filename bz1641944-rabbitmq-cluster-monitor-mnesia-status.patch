@@ -1,0 +1,57 @@
+From fcaa52bb98a8686d993550c6f4ab7867625c8059 Mon Sep 17 00:00:00 2001
+From: John Eckersberg <jeckersb@redhat.com>
+Date: Wed, 29 Aug 2018 16:18:55 -0400
+Subject: [PATCH] rabbitmq-cluster: get cluster status from mnesia during
+ monitor
+
+If mnesia is not running (for example if `rabbitmqctl stop_app` has
+been called, or the service has paused during partition due to the
+pause_minority strategy) then the cluster_status command to
+rabbitmqctl will read the cached cluster status from disk and the
+command returns 0 even though the service isn't really running at all.
+
+Instead, force the cluster status to be read from mnesia.  If mnesia
+is not running due to the above or similar circumstances, the command
+will catch that and properly fail the monitor action.
+
+Resolves: RHBZ#1595753
+---
+ heartbeat/rabbitmq-cluster | 20 +++++---------------
+ 1 file changed, 5 insertions(+), 15 deletions(-)
+
+diff --git a/heartbeat/rabbitmq-cluster b/heartbeat/rabbitmq-cluster
+index a7d2db614..204917475 100755
+--- a/heartbeat/rabbitmq-cluster
++++ b/heartbeat/rabbitmq-cluster
+@@ -181,26 +181,16 @@ remove_pid () {
+ rmq_monitor() {
+ 	local rc
+ 
+-	$RMQ_CTL cluster_status > /dev/null 2>&1
+-	rc=$?
+-	case "$rc" in
+-	0)
++	if $RMQ_CTL eval 'rabbit_mnesia:cluster_status_from_mnesia().' | grep -q '^{ok'; then
+ 		ocf_log debug "RabbitMQ server is running normally"
+ 		rmq_write_nodename
+-		
++
+ 		return $OCF_SUCCESS
+-	;;
+-	2|68|69|70|75|78)
+-		ocf_log info "RabbitMQ server is not running"
++	else
++		ocf_log info "RabbitMQ server could not get cluster status from mnesia"
+ 		rmq_delete_nodename
+ 		return $OCF_NOT_RUNNING
+-	;;
+-	*)
+-		ocf_log err "Unexpected return code from '$RMQ_CTL cluster_status' exit code: $rc"
+-		rmq_delete_nodename
+-		return $OCF_ERR_GENERIC
+-	;;
+-	esac
++	fi
+ }
+ 
+ rmq_init_and_wait()

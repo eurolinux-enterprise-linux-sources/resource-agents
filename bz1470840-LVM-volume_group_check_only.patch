@@ -1,0 +1,72 @@
+From c414259728610f95243d9e34289fefd596b0ac8b Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Fri, 22 Jun 2018 15:37:36 +0200
+Subject: [PATCH] LVM: add "volume_group_check_only" parameter to avoid
+ timeouts in some cases
+
+---
+ heartbeat/LVM        | 10 ++++++++++
+ heartbeat/lvm-tag.sh | 24 +++++++++++++-----------
+ 2 files changed, 23 insertions(+), 11 deletions(-)
+
+diff --git a/heartbeat/LVM b/heartbeat/LVM
+index d3cd1a14..10f7186d 100755
+--- a/heartbeat/LVM
++++ b/heartbeat/LVM
+@@ -103,6 +103,16 @@ logical volumes.
+ <content type="string" default="false" />
+ </parameter>
+ 
++<parameter name="volume_group_check_only" unique="0" required="0">
++<longdesc lang="en">
++If set, only the volume group will be checked during monitoring.
++
++WARNING: ONLY USE IF YOU HAVE ISSUES WITH TIMEOUTS!
++</longdesc>
++<shortdesc lang="en">Only check volume group during monitoring</shortdesc>
++<content type="string" default="false" />
++</parameter>
++
+ </parameters>
+ 
+ <actions>
+diff --git a/heartbeat/lvm-tag.sh b/heartbeat/lvm-tag.sh
+index 71f53b20..170426e8 100644
+--- a/heartbeat/lvm-tag.sh
++++ b/heartbeat/lvm-tag.sh
+@@ -160,19 +160,21 @@ lvm_validate_all() {
+ lvm_status() {
+ 	local rc=0
+ 
+-	# If vg is running, make sure the correct tag is present. Otherwise we
+-	# can not guarantee exclusive activation.
+-	if ! check_tags; then
+-		ocf_exit_reason "WARNING: $OCF_RESKEY_volgrpname is active without the cluster tag, \"$OUR_TAG\""
+-		rc=$OCF_ERR_GENERIC
+-	fi
++	if ! ocf_is_true "$OCF_RESKEY_volume_group_check_only"; then
++		# If vg is running, make sure the correct tag is present. Otherwise we
++		# can not guarantee exclusive activation.
++		if ! check_tags; then
++			ocf_exit_reason "WARNING: $OCF_RESKEY_volgrpname is active without the cluster tag, \"$OUR_TAG\""
++			rc=$OCF_ERR_GENERIC
++		fi
+ 
+-	# make sure the environment for tags activation is still valid
+-	if ! verify_tags_environment; then
+-		rc=$OCF_ERR_GENERIC
++		# make sure the environment for tags activation is still valid
++		if ! verify_tags_environment; then
++			rc=$OCF_ERR_GENERIC
++		fi
++		# let the user know if their initrd is older than lvm.conf.
++		check_initrd_warning
+ 	fi
+-	# let the user know if their initrd is older than lvm.conf.
+-	check_initrd_warning
+ 
+ 	return $rc
+ }
+-- 
+2.17.1
+

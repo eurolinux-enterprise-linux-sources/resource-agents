@@ -1,0 +1,54 @@
+From 2c219dd000d7f5edd3765a1c6bc5f3e6efb7208b Mon Sep 17 00:00:00 2001
+From: Paul Mezzanini <pfmeec@rit.edu>
+Date: Fri, 1 Jun 2018 11:58:06 -0400
+Subject: [PATCH] Volume groups and logical volumes "-" in their name get
+ mangled with double dashes in dmsetup.  Switching to wc and just counting
+ lines while depending on the vgname + lvname filter in the dmsetup call gets
+ around the issue with dmsetup outputting correctly but grep failing due to
+ the name mangle.
+
+Logic for both test cases and dmsetup calls changed so they match too.  No reason
+to not have matching tests.
+
+This is AllBad but there isn't a better way that I'm aware of yet.
+---
+ heartbeat/LVM-activate | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/heartbeat/LVM-activate b/heartbeat/LVM-activate
+index 60e656178..fbd058288 100755
+--- a/heartbeat/LVM-activate
++++ b/heartbeat/LVM-activate
+@@ -692,20 +692,27 @@ tagging_deactivate() {
+ # lvs/vgs when the metadata is somehow inconsistent.
+ #
+ # So, we have to make compromise that the VG is assumably active if any LV of the VG is active.
++#
++# Paul:
++# VGS + LVS with "-" in their name get mangled with double dashes in dmsetup.
++# Switching to wc and just counting lines while depending on the vgname + lvname filter
++# in dmsetup gets around the issue with dmsetup reporting correctly but grep failing.
++#
++# Logic for both test cases and dmsetup calls changed so they match too.
++#
++# This is AllBad but there isn't a better way that I'm aware of yet.
+ lvm_status() {
+ 	local dm_count
+ 
+ 	if [ -n "${LV}" ]; then
+ 		# dmsetup ls? It cannot accept device name. It's
+ 		# too heavy to list all DM devices.
+-		dmsetup info --noheadings --noflush -c -S "vgname=${VG} && lvname=${LV}" \
+-			| grep -Eq "${VG}-+${LV}"
++		dm_count=$(dmsetup info --noheadings --noflush -c -S "vgname=${VG} && lvname=${LV}" |  wc -l )
+ 	else
+-		dm_count=$(dmsetup --noheadings info -c -S "vgname=${VG}" 2>/dev/null | grep -c "${VG}-")
+-		test $dm_count -gt 0
++		dm_count=$(dmsetup info --noheadings --noflush -c -S "vgname=${VG}" 2>/dev/null | wc -l )
+ 	fi
+ 
+-	if [ $? -ne 0 ]; then
++	if [ $dm_count -eq 0 ]; then
+ 		return $OCF_NOT_RUNNING
+ 	fi
+ 

@@ -1,0 +1,59 @@
+From b42ef7555de86cc29d165ae17682c223bfb23b6e Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Mon, 5 Nov 2018 16:38:01 +0100
+Subject: [PATCH 1/2] tomcat: use systemd on RHEL when catalina.sh is
+ unavailable
+
+---
+ heartbeat/tomcat | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/heartbeat/tomcat b/heartbeat/tomcat
+index 4812a0133..833870038 100755
+--- a/heartbeat/tomcat
++++ b/heartbeat/tomcat
+@@ -613,7 +613,6 @@ TOMCAT_NAME="${OCF_RESKEY_tomcat_name-tomcat}"
+ TOMCAT_CONSOLE="${OCF_RESKEY_script_log-/var/log/$TOMCAT_NAME.log}"
+ RESOURCE_TOMCAT_USER="${OCF_RESKEY_tomcat_user-root}"
+ RESOURCE_STATUSURL="${OCF_RESKEY_statusurl-http://127.0.0.1:8080}"
+-OCF_RESKEY_force_systemd_default=0
+ 
+ JAVA_HOME="${OCF_RESKEY_java_home}"
+ JAVA_OPTS="${OCF_RESKEY_java_opts}"
+@@ -630,6 +629,13 @@ if [ -z "$CATALINA_PID" ]; then
+ 	CATALINA_PID="${HA_RSCTMP}/${TOMCAT_NAME}_tomcatstate/catalina.pid"
+ fi
+ 
++# Only default to true for RedHat systems without catalina.sh
++if [ -e "$CATALINA_HOME/bin/catalina.sh" ] || ! is_redhat_based; then
++	OCF_RESKEY_force_systemd_default=0
++else
++	OCF_RESKEY_force_systemd_default=1
++fi
++
+ MAX_STOP_TIME="${OCF_RESKEY_max_stop_time}"
+ 
+ : ${OCF_RESKEY_force_systemd=${OCF_RESKEY_force_systemd_default}}
+
+From 9cb2b142a9ecb3a2d5a51cdd51b4005f08b9a97b Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Mon, 5 Nov 2018 17:09:43 +0100
+Subject: [PATCH 2/2] ocf-distro: add regex for RedHat version
+
+---
+ heartbeat/ocf-distro | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/ocf-distro b/heartbeat/ocf-distro
+index 530ee57ed..f69910c98 100644
+--- a/heartbeat/ocf-distro
++++ b/heartbeat/ocf-distro
+@@ -39,7 +39,7 @@ get_os_ver() {
+ 		VER=$(cat $_DEBIAN_VERSION_FILE)
+ 	elif [ -f $_REDHAT_RELEASE_FILE ]; then
+ 		OS=RedHat  # redhat or similar
+-		VER= # here some complex sed script
++		VER=$(sed "s/.* release \([^ ]\+\).*/\1/" $_REDHAT_RELEASE_FILE)
+ 	else
+ 		OS=$(uname -s)
+ 		VER=$(uname -r)

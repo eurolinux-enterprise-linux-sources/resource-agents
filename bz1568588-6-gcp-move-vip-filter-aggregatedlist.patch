@@ -1,0 +1,25 @@
+From 6bd66e337922403cb2dd3a8715ae401def8c0437 Mon Sep 17 00:00:00 2001
+From: Helen Koike <helen.koike@collabora.com>
+Date: Thu, 19 Jul 2018 13:00:58 -0300
+Subject: [PATCH] gcp-vpc-move-vip.in: filter call to aggregatedList
+
+Don't list all the instances in the project, filter only the one we are
+interested in.
+---
+ heartbeat/gcp-vpc-move-vip.in | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/heartbeat/gcp-vpc-move-vip.in b/heartbeat/gcp-vpc-move-vip.in
+index 9fc87242f..af2080502 100755
+--- a/heartbeat/gcp-vpc-move-vip.in
++++ b/heartbeat/gcp-vpc-move-vip.in
+@@ -169,7 +169,8 @@ def get_localhost_alias():
+ 
+ 
+ def get_zone(project, instance):
+-  request = CONN.instances().aggregatedList(project=project)
++  fl = 'name="%s"' % instance
++  request = CONN.instances().aggregatedList(project=project, filter=fl)
+   while request is not None:
+     response = request.execute()
+     zones = response.get('items', {})

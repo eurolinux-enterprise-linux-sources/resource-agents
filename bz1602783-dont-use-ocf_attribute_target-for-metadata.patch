@@ -1,0 +1,76 @@
+From 2dbfbd8ee3c1547f941507ab4109aa04eec0ef5a Mon Sep 17 00:00:00 2001
+From: Michele Baldessari <michele@acksyn.org>
+Date: Mon, 16 Jul 2018 20:24:04 +0200
+Subject: [PATCH] Do not call ocf_attribute_target in the meta-data function
+
+Starting with pacemaker-1.1.19 a "crm_node -n" call triggers
+a CRM_OP_NODE_INFO cluster operation. If this is called
+from a bundle with 1.1.19 code (or later) running on a 1.1.18
+cluster, during a meta-data call we will get the following error in the
+cluster logs:
+Jul 14 11:35:27 [20041] controller-0 crmd: error: handle_request: Unexpected request (node-info) sent to non-DC node
+Jul 14 11:35:27 [20041] controller-0 crmd: error: handle_request: Unexpected <create_request_adv origin="send_node_info_request" t="crmd" version="3.0.14" subt="request" reference="node-info-crm_node-1531568127-1" crm_task="node-info" crm_sys_to="crmd" crm_sys_from="e67698a2-6f50-45fc-b8de-423c94e11c99" acl_target="root" crm_user="root" src="controller-0"/>
+
+By not calling ocf_attribute_target (which triggers a crm_node -n
+call) when polling for meta-data we do not run into this issue.
+
+This can easily get triggered when creating a resource invoking
+crm_node -n inside a 1.1.19 container with pcs, as that invokes
+the 'meta-data' action explicitely.
+
+Co-Authored-By: Damien Ciabrini <dciabrin@redhat.com>
+Suggested-By: Ken Gaillot <kgaillot@redhat.com>
+---
+ heartbeat/galera           | 6 ++++--
+ heartbeat/rabbitmq-cluster | 4 +++-
+ heartbeat/redis.in         | 4 +++-
+ 3 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/heartbeat/galera b/heartbeat/galera
+index 270bdaf1b..4f341ceef 100755
+--- a/heartbeat/galera
++++ b/heartbeat/galera
+@@ -66,9 +66,11 @@
+ 
+ : ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+ . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+-. ${OCF_FUNCTIONS_DIR}/mysql-common.sh
+ 
+-NODENAME=$(ocf_attribute_target)
++if [ "$__OCF_ACTION" != "meta-data" ]; then
++    . ${OCF_FUNCTIONS_DIR}/mysql-common.sh
++    NODENAME=$(ocf_attribute_target)
++fi
+ 
+ # It is common for some galera instances to store
+ # check user that can be used to query status
+diff --git a/heartbeat/rabbitmq-cluster b/heartbeat/rabbitmq-cluster
+index 9ff49e075..54a16c941 100755
+--- a/heartbeat/rabbitmq-cluster
++++ b/heartbeat/rabbitmq-cluster
+@@ -37,7 +37,9 @@ RMQ_DATA_DIR="/var/lib/rabbitmq/mnesia"
+ RMQ_PID_DIR="/var/run/rabbitmq"
+ RMQ_PID_FILE="/var/run/rabbitmq/rmq.pid"
+ RMQ_LOG_DIR="/var/log/rabbitmq"
+-NODENAME=$(ocf_attribute_target)
++if [ "$__OCF_ACTION" != "meta-data" ]; then
++	NODENAME=$(ocf_attribute_target)
++fi
+ 
+ # this attr represents the current active local rmq node name.
+ # when rmq stops or the node is fenced, this attr disappears
+diff --git a/heartbeat/redis.in b/heartbeat/redis.in
+index d5eb8f664..ddc62d8a7 100644
+--- a/heartbeat/redis.in
++++ b/heartbeat/redis.in
+@@ -664,7 +664,9 @@ redis_validate() {
+ 	fi
+ }
+ 
+-NODENAME=$(ocf_attribute_target)
++if [ "$__OCF_ACTION" != "meta-data" ]; then
++	NODENAME=$(ocf_attribute_target)
++fi
+ if [ -r "$REDIS_CONFIG" ]; then
+ 	clientpasswd="$(sed -n -e  's/^\s*requirepass\s*\(.*\)\s*$/\1/p' < $REDIS_CONFIG | tail -n 1)"
+ fi

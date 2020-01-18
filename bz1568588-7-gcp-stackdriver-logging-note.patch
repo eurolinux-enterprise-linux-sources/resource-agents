@@ -1,0 +1,28 @@
+diff -uNr a/heartbeat/gcp-vpc-move-route.in b/heartbeat/gcp-vpc-move-route.in
+--- a/heartbeat/gcp-vpc-move-route.in	2018-07-30 16:56:23.486368292 +0200
++++ b/heartbeat/gcp-vpc-move-route.in	2018-07-30 17:11:54.189715666 +0200
+@@ -125,8 +125,8 @@
+ </parameter>
+ 
+ <parameter name="stackdriver_logging" unique="0" required="0">
+-<longdesc lang="en">If enabled (set to true), IP failover logs will be posted to stackdriver logging</longdesc>
+-<shortdesc lang="en">Stackdriver-logging support</shortdesc>
++<longdesc lang="en">If enabled (set to true), IP failover logs will be posted to stackdriver logging. Using stackdriver logging requires additional libraries (google-cloud-logging).</longdesc>
++<shortdesc lang="en">Stackdriver-logging support. Requires additional libraries (google-cloud-logging).</shortdesc>
+ <content type="boolean" default="" />
+ </parameter>
+ </parameters>
+diff -uNr a/heartbeat/gcp-vpc-move-vip.in b/heartbeat/gcp-vpc-move-vip.in
+--- a/heartbeat/gcp-vpc-move-vip.in	2018-07-30 16:56:23.486368292 +0200
++++ b/heartbeat/gcp-vpc-move-vip.in	2018-07-30 17:06:17.260686483 +0200
+@@ -72,8 +72,8 @@
+       <content type="string" default="" />
+     </parameter>
+     <parameter name="stackdriver_logging" unique="0" required="0">
+-      <longdesc lang="en">If enabled (set to true), IP failover logs will be posted to stackdriver logging</longdesc>
+-      <shortdesc lang="en">Stackdriver-logging support</shortdesc>
++      <longdesc lang="en">If enabled (set to true), IP failover logs will be posted to stackdriver logging. Using stackdriver logging requires additional libraries (google-cloud-logging).</longdesc>
++      <shortdesc lang="en">Stackdriver-logging support. Requires additional libraries (google-cloud-logging).</shortdesc>
+       <content type="boolean" default="" />
+     </parameter>
+   </parameters>

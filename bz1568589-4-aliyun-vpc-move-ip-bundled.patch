@@ -1,0 +1,62 @@
+diff -uNr a/heartbeat/aliyun-vpc-move-ip b/heartbeat/aliyun-vpc-move-ip
+--- a/heartbeat/aliyun-vpc-move-ip	2018-08-03 15:21:34.869664678 +0200
++++ b/heartbeat/aliyun-vpc-move-ip	2018-08-03 15:22:48.632185198 +0200
+@@ -36,13 +36,13 @@
+ 			ip_drop
+ 		fi
+ 
+-		cmd="aliyuncli vpc CreateRouteEntry --RouteTableId $OCF_RESKEY_routing_table --DestinationCidrBlock ${OCF_RESKEY_address}/32 --NextHopId $ECS_INSTANCE_ID --NextHopType Instance --output text"
++		cmd="aliyuncli-ra vpc CreateRouteEntry --RouteTableId $OCF_RESKEY_routing_table --DestinationCidrBlock ${OCF_RESKEY_address}/32 --NextHopId $ECS_INSTANCE_ID --NextHopType Instance --output text"
+ 		ocf_log debug "executing command: $cmd"
+ 		$cmd
+ 		rc=$?
+ 		while [ $rc -ne 0 ]; do
+ 			sleep 1
+-			cmd="aliyuncli vpc CreateRouteEntry --RouteTableId $OCF_RESKEY_routing_table --DestinationCidrBlock ${OCF_RESKEY_address}/32 --NextHopId $ECS_INSTANCE_ID --NextHopType Instance --output text"
++			cmd="aliyuncli-ra vpc CreateRouteEntry --RouteTableId $OCF_RESKEY_routing_table --DestinationCidrBlock ${OCF_RESKEY_address}/32 --NextHopId $ECS_INSTANCE_ID --NextHopType Instance --output text"
+ 			ocf_log debug "executing command: $cmd"
+ 			$cmd
+ 			rc=$?
+@@ -75,7 +75,7 @@
+ 		return $OCF_ERR_GENERIC
+ 	fi
+ 
+-	cmd="aliyuncli vpc DeleteRouteEntry --RouteTableId $OCF_RESKEY_routing_table --DestinationCidrBlock ${OCF_RESKEY_address}/32 --NextHopId $ROUTE_TO_INSTANCE --output text"
++	cmd="aliyuncli-ra vpc DeleteRouteEntry --RouteTableId $OCF_RESKEY_routing_table --DestinationCidrBlock ${OCF_RESKEY_address}/32 --NextHopId $ROUTE_TO_INSTANCE --output text"
+ 	ocf_log debug "executing command: $cmd"
+ 	$cmd
+ 	if [ $? -ne 0 ]; then
+@@ -90,13 +90,13 @@
+ }
+ 
+ wait_for_started() {
+-	cmd="aliyuncli vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
++	cmd="aliyuncli-ra vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
+ 	ocf_log debug "executing command: $cmd"
+ 	ROUTE_TO_INSTANCE="$($cmd | grep $OCF_RESKEY_address | awk '{ print $3 }')"
+ 
+ 	while [ "$ECS_INSTANCE_ID" != "$ROUTE_TO_INSTANCE" ]; do
+ 		sleep 3
+-		cmd="aliyuncli vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
++		cmd="aliyuncli-ra vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
+ 		ocf_log debug "executing command: $cmd"
+ 		ROUTE_TO_INSTANCE="$($cmd | grep $OCF_RESKEY_address | awk '{ print $3 }')"
+ 	done
+@@ -107,7 +107,7 @@
+ 
+ 	 while [ ! -z "$ROUTE_TO_INSTANCE" ]; do
+ 		sleep 1
+-		cmd="aliyuncli vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
++		cmd="aliyuncli-ra vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
+ 		ocf_log debug "executing command: $cmd"
+ 		ROUTE_TO_INSTANCE="$($cmd |grep $OCF_RESKEY_address | awk '{ print $3 }')"
+ 	 done
+@@ -248,7 +248,7 @@
+ 
+ ecs_ip_monitor() {
+ 	ocf_log debug "function: ecsip_monitor: check routing table"
+-	cmd="aliyuncli vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
++	cmd="aliyuncli-ra vpc DescribeRouteTables --RouteTableId $OCF_RESKEY_routing_table --output text"
+ 	ocf_log debug "executing command: $cmd"
+ 
+ 	ROUTE_TO_INSTANCE="$($cmd |grep $OCF_RESKEY_address | awk '{ print $3 }')"

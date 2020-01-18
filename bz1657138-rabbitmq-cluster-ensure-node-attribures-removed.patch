@@ -1,0 +1,42 @@
+From 8ed87936e9ad06318cc49ea767885a405dfde11e Mon Sep 17 00:00:00 2001
+From: John Eckersberg <jeckersb@redhat.com>
+Date: Wed, 5 Dec 2018 11:45:43 -0500
+Subject: [PATCH] rabbitmq-cluster: better ensure node attributes are removed
+
+Ensure that the attribute is removed at the end of the stop action.
+Also if rmq_app_running or rmq_node_alive shows the service as down,
+ensure the attribute is deleted as well.
+
+Resolves: RHBZ#1656368
+---
+ heartbeat/rabbitmq-cluster | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/heartbeat/rabbitmq-cluster b/heartbeat/rabbitmq-cluster
+index 1643dd1e7..2dca3e216 100755
+--- a/heartbeat/rabbitmq-cluster
++++ b/heartbeat/rabbitmq-cluster
+@@ -184,6 +184,7 @@ rmq_app_running() {
+ 		return $OCF_SUCCESS
+ 	else
+ 		ocf_log debug "RabbitMQ application is stopped"
++		rmq_delete_nodename
+ 		return $OCF_NOT_RUNNING
+ 	fi
+ }
+@@ -194,6 +195,7 @@ rmq_node_alive() {
+ 		return $OCF_SUCCESS
+ 	else
+ 		ocf_log debug "RabbitMQ node is down"
++		rmq_delete_nodename
+ 		return $OCF_NOT_RUNNING
+ 	fi
+ }
+@@ -554,6 +556,7 @@ rmq_stop() {
+ 		sleep 1
+ 	done
+ 
++	rmq_delete_nodename
+ 	remove_pid
+ 	return $OCF_SUCCESS
+ }

@@ -1,0 +1,42 @@
+From 12ef5a343158bbfaa5233468a0506074fceaac81 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Tue, 21 Aug 2018 12:14:49 +0200
+Subject: [PATCH] LVM-activate: return OCF_ERR_CONFIGURED for incorrect
+ vg_access_mode
+
+---
+ heartbeat/LVM-activate | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/heartbeat/LVM-activate b/heartbeat/LVM-activate
+index fbd058288..55e36a2d2 100755
+--- a/heartbeat/LVM-activate
++++ b/heartbeat/LVM-activate
+@@ -448,7 +448,7 @@ lvm_validate() {
+ 		;;
+ 	*)
+ 		ocf_exit_reason "You specified an invalid value for vg_access_mode: $VG_access_mode"
+-		exit $OCF_ERR_ARGS
++		exit $OCF_ERR_CONFIGURED
+ 		;;
+ 	esac
+ 
+@@ -771,7 +771,6 @@ lvm_stop() {
+ 		return $OCF_SUCCESS
+ 	fi
+ 
+-	lvm_validate
+ 	ocf_log info "Deactivating ${vol}"
+ 
+ 	case ${VG_access_mode} in
+@@ -788,8 +787,8 @@ lvm_stop() {
+ 		tagging_deactivate
+ 		;;
+ 	*)
+-		ocf_exit_reason "VG [${VG}] is not properly configured in cluster. It's unsafe!"
+-		exit $OCF_ERR_CONFIGURED
++		ocf_log err "VG [${VG}] is not properly configured in cluster. It's unsafe!"
++		exit $OCF_SUCCESS
+ 		;;
+ 	esac
+ 

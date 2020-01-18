@@ -1,0 +1,104 @@
+From 57f695d336cab33c61e754e463654ad6400f7b58 Mon Sep 17 00:00:00 2001
+From: gguifelixamz <fguilher@amazon.com>
+Date: Tue, 27 Nov 2018 17:06:05 +0000
+Subject: [PATCH 1/4] Enable --query flag in DescribeRouteTable API call to
+ avoid race condition with grep
+
+---
+ heartbeat/aws-vpc-move-ip | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/heartbeat/aws-vpc-move-ip b/heartbeat/aws-vpc-move-ip
+index 9b2043aca..d2aed7490 100755
+--- a/heartbeat/aws-vpc-move-ip
++++ b/heartbeat/aws-vpc-move-ip
+@@ -167,9 +167,10 @@ ec2ip_validate() {
+ ec2ip_monitor() {
+ 	if ocf_is_true ${OCF_RESKEY_monapi} || [ "$__OCF_ACTION" = "start" ] || ocf_is_probe; then
+ 		ocf_log info "monitor: check routing table (API call)"
+-		cmd="$OCF_RESKEY_awscli --profile $OCF_RESKEY_profile --output text ec2 describe-route-tables --route-table-ids $OCF_RESKEY_routing_table"
++                cmd=''$OCF_RESKEY_awscli' --profile '$OCF_RESKEY_profile' --output text ec2 describe-route-tables --route-table-ids '$OCF_RESKEY_routing_table' --query 'RouteTables[*].Routes[?DestinationCidrBlock==\`$OCF_RESKEY_address/32\`].InstanceId''
+ 		ocf_log debug "executing command: $cmd"
+-		ROUTE_TO_INSTANCE="$($cmd | grep $OCF_RESKEY_ip | awk '{ print $3 }')"
++                ROUTE_TO_INSTANCE=$($cmd)
++                ocf_log debug "Overlay IP is currently routed to ${ROUTE_TO_INSTANCE}"
+ 		if [ -z "$ROUTE_TO_INSTANCE" ]; then
+ 			ROUTE_TO_INSTANCE="<unknown>"
+ 		fi
+
+From 4d6371aca5dca35b902a480e07a08c1dc3373ca5 Mon Sep 17 00:00:00 2001
+From: gguifelixamz <fguilher@amazon.com>
+Date: Thu, 29 Nov 2018 11:39:26 +0000
+Subject: [PATCH 2/4] aws-vpc-move-ip: Fixed outer quotes and removed inner
+ quotes
+
+---
+ heartbeat/aws-vpc-move-ip | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/aws-vpc-move-ip b/heartbeat/aws-vpc-move-ip
+index d2aed7490..ced69bd13 100755
+--- a/heartbeat/aws-vpc-move-ip
++++ b/heartbeat/aws-vpc-move-ip
+@@ -167,7 +167,7 @@ ec2ip_validate() {
+ ec2ip_monitor() {
+ 	if ocf_is_true ${OCF_RESKEY_monapi} || [ "$__OCF_ACTION" = "start" ] || ocf_is_probe; then
+ 		ocf_log info "monitor: check routing table (API call)"
+-                cmd=''$OCF_RESKEY_awscli' --profile '$OCF_RESKEY_profile' --output text ec2 describe-route-tables --route-table-ids '$OCF_RESKEY_routing_table' --query 'RouteTables[*].Routes[?DestinationCidrBlock==\`$OCF_RESKEY_address/32\`].InstanceId''
++                cmd="$OCF_RESKEY_awscli --profile $OCF_RESKEY_profile --output text ec2 describe-route-tables --route-table-ids $OCF_RESKEY_routing_table --query RouteTables[*].Routes[?DestinationCidrBlock==\`$OCF_RESKEY_address/32\`].InstanceId"
+ 		ocf_log debug "executing command: $cmd"
+                 ROUTE_TO_INSTANCE=$($cmd)
+                 ocf_log debug "Overlay IP is currently routed to ${ROUTE_TO_INSTANCE}"
+
+From 09f4b061690a0e681aaf7314f1fc3e6f4e597cc8 Mon Sep 17 00:00:00 2001
+From: gguifelixamz <fguilher@amazon.com>
+Date: Thu, 29 Nov 2018 11:55:05 +0000
+Subject: [PATCH 3/4] aws-vpc-move-ip: Replaced indentation spaces with tabs
+ for consistency with the rest of the code
+
+---
+ heartbeat/aws-vpc-move-ip | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/heartbeat/aws-vpc-move-ip b/heartbeat/aws-vpc-move-ip
+index ced69bd13..3e827283e 100755
+--- a/heartbeat/aws-vpc-move-ip
++++ b/heartbeat/aws-vpc-move-ip
+@@ -167,10 +167,10 @@ ec2ip_validate() {
+ ec2ip_monitor() {
+ 	if ocf_is_true ${OCF_RESKEY_monapi} || [ "$__OCF_ACTION" = "start" ] || ocf_is_probe; then
+ 		ocf_log info "monitor: check routing table (API call)"
+-                cmd="$OCF_RESKEY_awscli --profile $OCF_RESKEY_profile --output text ec2 describe-route-tables --route-table-ids $OCF_RESKEY_routing_table --query RouteTables[*].Routes[?DestinationCidrBlock==\`$OCF_RESKEY_address/32\`].InstanceId"
++		cmd="$OCF_RESKEY_awscli --profile $OCF_RESKEY_profile --output text ec2 describe-route-tables --route-table-ids $OCF_RESKEY_routing_table --query RouteTables[*].Routes[?DestinationCidrBlock==\`$OCF_RESKEY_address/32\`].InstanceId"
+ 		ocf_log debug "executing command: $cmd"
+-                ROUTE_TO_INSTANCE=$($cmd)
+-                ocf_log debug "Overlay IP is currently routed to ${ROUTE_TO_INSTANCE}"
++		ROUTE_TO_INSTANCE=$($cmd)
++		ocf_log debug "Overlay IP is currently routed to ${ROUTE_TO_INSTANCE}"
+ 		if [ -z "$ROUTE_TO_INSTANCE" ]; then
+ 			ROUTE_TO_INSTANCE="<unknown>"
+ 		fi
+
+From fcf85551ce70cb4fb7ce24e21c361fdbe6fcce6b Mon Sep 17 00:00:00 2001
+From: gguifelixamz <fguilher@amazon.com>
+Date: Thu, 29 Nov 2018 13:07:32 +0000
+Subject: [PATCH 4/4] aws-vpc-move-ip: In cmd variable on ec2ip_monitor():
+ replaced _address with _ip and modified to use single quotes
+
+---
+ heartbeat/aws-vpc-move-ip | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/aws-vpc-move-ip b/heartbeat/aws-vpc-move-ip
+index 3e827283e..331ee184f 100755
+--- a/heartbeat/aws-vpc-move-ip
++++ b/heartbeat/aws-vpc-move-ip
+@@ -167,7 +167,7 @@ ec2ip_validate() {
+ ec2ip_monitor() {
+ 	if ocf_is_true ${OCF_RESKEY_monapi} || [ "$__OCF_ACTION" = "start" ] || ocf_is_probe; then
+ 		ocf_log info "monitor: check routing table (API call)"
+-		cmd="$OCF_RESKEY_awscli --profile $OCF_RESKEY_profile --output text ec2 describe-route-tables --route-table-ids $OCF_RESKEY_routing_table --query RouteTables[*].Routes[?DestinationCidrBlock==\`$OCF_RESKEY_address/32\`].InstanceId"
++		cmd="$OCF_RESKEY_awscli --profile $OCF_RESKEY_profile --output text ec2 describe-route-tables --route-table-ids $OCF_RESKEY_routing_table --query RouteTables[*].Routes[?DestinationCidrBlock=='$OCF_RESKEY_ip/32'].InstanceId"
+ 		ocf_log debug "executing command: $cmd"
+ 		ROUTE_TO_INSTANCE=$($cmd)
+ 		ocf_log debug "Overlay IP is currently routed to ${ROUTE_TO_INSTANCE}"

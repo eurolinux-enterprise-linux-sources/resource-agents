@@ -1,0 +1,31 @@
+From 42dccdd20aff3ebf134c8041f79ab0a658975e69 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Michal=20Koutn=C3=BD?= <mkoutny@suse.com>
+Date: Thu, 30 Aug 2018 18:02:51 +0200
+Subject: [PATCH] aws-vpc-move-ip: Fix broken shell quoting
+
+The argument 4th to `ip` is passed with single quotes around which
+cannot be parsed as valid IP address. Furthermore, we need to expand the
+$OCF_RESKEY_ip for grep. This breaks correct detection of the assigned
+address.
+
+Fixes 7632a85bcf642b484df52a25dbffbfa0031421bc.
+---
+ heartbeat/aws-vpc-move-ip | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/heartbeat/aws-vpc-move-ip b/heartbeat/aws-vpc-move-ip
+index 3bbbed474..ce3fc6b9a 100755
+--- a/heartbeat/aws-vpc-move-ip
++++ b/heartbeat/aws-vpc-move-ip
+@@ -167,9 +167,9 @@ ec2ip_monitor() {
+ 		ocf_log debug "monitor: Enhanced Monitoring disabled - omitting API call"
+ 	fi
+ 
+-	cmd="ip addr show to '$OCF_RESKEY_ip' up"
++	cmd="ip addr show to $OCF_RESKEY_ip up"
+ 	ocf_log debug "executing command: $cmd"
+-	RESULT=$($cmd | grep '$OCF_RESKEY_ip')
++	RESULT=$($cmd | grep "$OCF_RESKEY_ip")
+ 	if [ -z "$RESULT" ]; then
+ 		ocf_log warn "IP $OCF_RESKEY_ip not assigned to running interface"
+ 		return $OCF_NOT_RUNNING

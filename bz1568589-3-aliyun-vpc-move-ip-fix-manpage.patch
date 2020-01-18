@@ -1,0 +1,22 @@
+From ee081df601f914079f111eec10cb81ab212130a9 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Wed, 25 Jul 2018 11:22:39 +0200
+Subject: [PATCH] aliyun-vpc-move-ip: fix manpage
+
+---
+ heartbeat/aliyun-vpc-move-ip | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/aliyun-vpc-move-ip b/heartbeat/aliyun-vpc-move-ip
+index 108feb247..e27952adb 100755
+--- a/heartbeat/aliyun-vpc-move-ip
++++ b/heartbeat/aliyun-vpc-move-ip
+@@ -117,7 +117,7 @@ ecs_ip_metadata() {
+ 	cat <<END
+ <?xml version="1.0"?>
+ <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+-<resource-agent name="vpc-move-ip">
++<resource-agent name="aliyun-vpc-move-ip">
+ <version>2.0</version>
+ <longdesc lang="en">
+ Resource Agent to move IP addresses within a VPC of the Aliyun Webservices ECS

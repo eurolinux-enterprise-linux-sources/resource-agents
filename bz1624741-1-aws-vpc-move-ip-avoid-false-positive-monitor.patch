@@ -1,0 +1,39 @@
+From 7632a85bcf642b484df52a25dbffbfa0031421bc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Michal=20Koutn=C3=BD?= <mkoutny@suse.com>
+Date: Mon, 6 Aug 2018 18:04:52 +0200
+Subject: [PATCH] aws-vpc-move-ip: Use ip utility to check address
+
+When pinging the assigned address during initial monitor (probe) on one
+node we may actually ping the reachable address when the resource is
+running on another node. This yields false positive monitor result on
+the pinging node. Avoid this by merely checking the assignment of the
+address to an interface.
+---
+ heartbeat/aws-vpc-move-ip | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/heartbeat/aws-vpc-move-ip b/heartbeat/aws-vpc-move-ip
+index cefa38e03..3bbbed474 100755
+--- a/heartbeat/aws-vpc-move-ip
++++ b/heartbeat/aws-vpc-move-ip
+@@ -167,15 +167,15 @@ ec2ip_monitor() {
+ 		ocf_log debug "monitor: Enhanced Monitoring disabled - omitting API call"
+ 	fi
+ 
+-	cmd="ping -W 1 -c 1 $OCF_RESKEY_ip"
++	cmd="ip addr show to '$OCF_RESKEY_ip' up"
+ 	ocf_log debug "executing command: $cmd"
+-	$cmd > /dev/null
+-	if [ "$?" -gt 0 ]; then
+-		ocf_log warn "IP $OCF_RESKEY_ip not locally reachable via ping on this system"
++	RESULT=$($cmd | grep '$OCF_RESKEY_ip')
++	if [ -z "$RESULT" ]; then
++		ocf_log warn "IP $OCF_RESKEY_ip not assigned to running interface"
+ 		return $OCF_NOT_RUNNING
+ 	fi
+ 
+-	ocf_log debug "route in VPC and locally reachable"
++	ocf_log debug "route in VPC and address assigned"
+ 	return $OCF_SUCCESS
+ }
+ 

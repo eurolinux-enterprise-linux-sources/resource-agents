@@ -1,0 +1,63 @@
+From 19ee29342f8bb573722991b8cbe4503309ad0bf9 Mon Sep 17 00:00:00 2001
+From: John Eckersberg <jeckersb@redhat.com>
+Date: Fri, 2 Nov 2018 13:12:53 -0400
+Subject: [PATCH] rabbitmq-cluster: fix regression in rmq_stop
+
+This regression was introduced in PR#1249 (cc23c55).  The stop action
+was modified to use rmq_app_running in order to check the service
+status, which allows for the following sequence of events:
+
+- service is started, unclustered
+- stop_app is called
+- cluster_join is attempted and fails
+- stop is called
+
+Because stop_app was called, rmq_app_running returns $OCF_NOT_RUNNING
+and the stop action is a no-op.  This means the erlang VM continues
+running.
+
+When the start action is attempted again, a new erlang VM is launched,
+but this VM fails to boot because the old one is still running and is
+registered with the same name (rabbit@nodename).
+
+This adds a new function, rmq_node_alive, which does a simple eval to
+test whether the erlang VM is up, independent of the rabbit app.  The
+stop action now uses rmq_node_alive to check the service status, so
+even if stop_app was previously called, the erlang VM will be stopped
+properly.
+
+Resolves: RHBZ#1639826
+---
+ heartbeat/rabbitmq-cluster | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/heartbeat/rabbitmq-cluster b/heartbeat/rabbitmq-cluster
+index 78b2bbadf..a2de9dc20 100755
+--- a/heartbeat/rabbitmq-cluster
++++ b/heartbeat/rabbitmq-cluster
+@@ -188,6 +188,16 @@ rmq_app_running() {
+ 	fi
+ }
+ 
++rmq_node_alive() {
++	if $RMQ_CTL eval 'ok.'; then
++		ocf_log debug "RabbitMQ node is alive"
++		return $OCF_SUCCESS
++	else
++		ocf_log debug "RabbitMQ node is down"
++		return $OCF_NOT_RUNNING
++	fi
++}
++
+ rmq_monitor() {
+ 	local rc
+ 
+@@ -514,7 +524,7 @@ rmq_stop() {
+ 		end.
+ 	"
+ 
+-	rmq_app_running
++	rmq_node_alive
+ 	if [ $? -eq $OCF_NOT_RUNNING ]; then
+ 		return $OCF_SUCCESS
+ 	fi

@@ -1,0 +1,66 @@
+diff -uNr a/heartbeat/IPaddr2 b/heartbeat/IPaddr2
+--- a/heartbeat/IPaddr2	2018-06-27 10:29:08.000000000 +0200
++++ b/heartbeat/IPaddr2	2018-06-29 16:01:50.538797379 +0200
+@@ -80,6 +80,7 @@
+ OCF_RESKEY_arp_bg_default=true
+ OCF_RESKEY_run_arping_default=false
+ OCF_RESKEY_preferred_lft_default="forever"
++OCF_RESKEY_monitor_retries_default="1"
+ 
+ : ${OCF_RESKEY_lvs_support=${OCF_RESKEY_lvs_support_default}}
+ : ${OCF_RESKEY_lvs_ipv6_addrlabel=${OCF_RESKEY_lvs_ipv6_addrlabel_default}}
+@@ -92,6 +93,7 @@
+ : ${OCF_RESKEY_arp_bg=${OCF_RESKEY_arp_bg_default}}
+ : ${OCF_RESKEY_run_arping=${OCF_RESKEY_run_arping_default}}
+ : ${OCF_RESKEY_preferred_lft=${OCF_RESKEY_preferred_lft_default}}
++: ${OCF_RESKEY_monitor_retries=${OCF_RESKEY_monitor_retries_default}}
+ #######################################################################
+ 
+ SENDARP=$HA_BIN/send_arp
+@@ -368,6 +370,18 @@
+ <content type="string" default="${OCF_RESKEY_preferred_lft_default}"/>
+ </parameter>
+ 
++<parameter name="monitor_retries">
++<longdesc lang="en">
++Set number of retries to find interface in monitor-action.
++
++ONLY INCREASE IF THE AGENT HAS ISSUES FINDING YOUR NIC DURING THE
++MONITOR-ACTION. A HIGHER SETTING MAY LEAD TO DELAYS IN DETECTING
++A FAILURE.
++</longdesc>
++<shortdesc lang="en">Number of retries to find interface in monitor-action</shortdesc>
++<content type="string" default="${OCF_RESKEY_monitor_retries_default}"/>
++</parameter>
++
+ </parameters>
+ <actions>
+ <action name="start"   timeout="20s" />
+@@ -536,15 +550,26 @@
+ find_interface() {
+ 	local ipaddr="$1"
+ 	local netmask="$2"
++	local iface=""
+ 
+ 	#
+ 	# List interfaces but exclude FreeS/WAN ipsecN virtual interfaces
+ 	#
+-	local iface="`$IP2UTIL -o -f $FAMILY addr show \
++	for i in $(seq 1 $OCF_RESKEY_monitor_retries); do
++	    iface="`$IP2UTIL -o -f $FAMILY addr show \
+ 		| grep "\ $ipaddr/$netmask" \
+ 		| cut -d ' ' -f2 \
+ 		| grep -v '^ipsec[0-9][0-9]*$'`"
+ 
++	    if [ -n "$iface" ]; then
++		    break
++	    fi
++
++	    if [ $OCF_RESKEY_monitor_retries -gt 1 ]; then
++		sleep 1
++	    fi
++	done
++
+ 	echo "$iface"
+ 	return 0
+ }
