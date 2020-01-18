@@ -1,0 +1,452 @@
+From 30b9f55325d2acfba27aa6859c7360e10b7201d7 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@suse.de>
+Date: Wed, 5 Jun 2019 00:41:13 +0200
+Subject: [PATCH 1/3] CTDB: support Samba 4.9+
+
+With Samba 4.9+, all ctdbd parameters have moved to config files.
+Generate a new /etc/ctdb/ctdb.conf file during ctdb startup, based on RA
+configuration.
+
+Event scripts in Samba 4.9+ are also no longer enabled/disabled based on
+file mode. Use the "ctdb event script enable/disable" helpers, which now
+work without a running ctdbd.
+
+Fixes: https://github.com/ClusterLabs/resource-agents/issues/1196
+Signed-off-by: David Disseldorp <ddiss@suse.de>
+Signed-off-by: Noel Power <noel.power@suse.com>
+Signed-off-by: Amitay Isaacs <amitay@samba.org>
+---
+ heartbeat/CTDB.in | 214 ++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 167 insertions(+), 47 deletions(-)
+
+diff --git a/heartbeat/CTDB.in b/heartbeat/CTDB.in
+index 4dd646896..79a2f97e7 100755
+--- a/heartbeat/CTDB.in
++++ b/heartbeat/CTDB.in
+@@ -143,6 +143,10 @@ OCF_RESKEY_smb_fileid_algorithm_default=""
+ 
+ #######################################################################
+ 
++ctdb_version() {
++	$OCF_RESKEY_ctdb_binary version | awk '{print $NF}' | sed "s/[-\.]\?[[:alpha:]].*//"
++}
++
+ meta_data() {
+ 	cat <<END
+ <?xml version="1.0"?>
+@@ -256,7 +260,7 @@ host any public ip addresses.
+ <longdesc lang="en">
+ The directory containing various CTDB configuration files.
+ The "nodes" and "notify.sh" scripts are expected to be
+-in this directory, as is the "events.d" subdirectory.
++in this directory.
+ </longdesc>
+ <shortdesc lang="en">CTDB config file directory</shortdesc>
+ <content type="string" default="/etc/ctdb" />
+@@ -282,8 +286,10 @@ Full path to the CTDB cluster daemon binary.
+ <longdesc lang="en">
+ Full path to the domain socket that ctdbd will create, used for
+ local clients to attach and communicate with the ctdb daemon.
++With CTDB 4.9.0 and later the socket path is hardcoded at build
++time, so this parameter is ignored.
+ </longdesc>
+-<shortdesc lang="en">CTDB socket location</shortdesc>
++<shortdesc lang="en">CTDB socket location (ignored with CTDB 4.9+)</shortdesc>
+ <content type="string" default="${OCF_RESKEY_ctdb_socket}" />
+ </parameter>
+ 
+@@ -421,16 +427,28 @@ invoke_ctdb() {
+ 		timeout=$((OCF_RESKEY_CRM_meta_timeout/1000))
+ 		timelimit=$((OCF_RESKEY_CRM_meta_timeout/1000))
+ 	fi
+-	$OCF_RESKEY_ctdb_binary --socket="$OCF_RESKEY_ctdb_socket" \
+-		-t $timeout -T $timelimit \
+-		"$@"
++
++	local vers=$(ctdb_version)
++	ocf_version_cmp "$vers" "4.9.0"
++
++	# if version < 4.9.0 specify '--socket' otherwise it's
++	# a compiled option
++	if [ "$?" -eq "0" ]; then
++		$OCF_RESKEY_ctdb_binary --socket="$OCF_RESKEY_ctdb_socket" \
++			-t $timeout -T $timelimit \
++			"$@"
++	else
++		$OCF_RESKEY_ctdb_binary \
++			-t $timeout -T $timelimit \
++			"$@"
++	fi
+ }
+ 
+ # Enable any event scripts that are explicitly required.
+ # Any others will ultimately be invoked or not based on how they ship
+ # with CTDB, but will generally have no effect, beacuase the relevant
+ # CTDB_MANAGES_* options won't be set in /etc/sysconfig/ctdb.
+-enable_event_scripts() {
++enable_event_scripts_chmod() {
+ 	local event_dir
+ 	event_dir=$OCF_RESKEY_ctdb_config_dir/events.d
+ 
+@@ -454,6 +472,36 @@ enable_event_scripts() {
+ 	fi
+ }
+ 
++enable_event_scripts_symlink() {
++	# event scripts are symlinked once enabled, with the link source in...
++	mkdir -p "$OCF_RESKEY_ctdb_config_dir/events/legacy" 2>/dev/null
++
++	invoke_ctdb event script enable legacy 00.ctdb
++
++	if [ -f "${OCF_RESKEY_ctdb_config_dir}/public_addresses" ]; then
++		invoke_ctdb event script enable legacy 10.interface
++	else
++		invoke_ctdb event script disable legacy 10.interface
++	fi
++	if [ -f "${OCF_RESKEY_ctdb_config_dir}/static-routes" ]; then
++		invoke_ctdb event script enable legacy 11.routing
++	else
++		invoke_ctdb event script disable legacy 11.routing
++	fi
++
++	if ocf_is_true "$OCF_RESKEY_ctdb_manages_winbind"; then
++		invoke_ctdb event script enable legacy 49.winbind
++	else
++		invoke_ctdb event script disable legacy 49.winbind
++	fi
++
++	if ocf_is_true "$OCF_RESKEY_ctdb_manages_samba"; then
++		invoke_ctdb event script enable legacy 50.samba
++	else
++		invoke_ctdb event script disable legacy 50.samba
++	fi
++}
++
+ # This function has no effect (currently no way to set CTDB_SET_*)
+ # but remains here in case we need it in future.
+ set_ctdb_variables() {
+@@ -556,6 +604,46 @@ append_ctdb_sysconfig() {
+ 	[ -n "$2" ] && echo "$1=$2" >> "$CTDB_SYSCONFIG"
+ }
+ 
++generate_ctdb_config() {
++	local ctdb_config="$OCF_RESKEY_ctdb_config_dir/ctdb.conf"
++
++	# Backup existing config if we're not already using an auto-generated one
++	grep -qa '# CTDB-RA: Auto-generated' $ctdb_config || cp -p $ctdb_config ${ctdb_config}.ctdb-ra-orig
++	if [ $? -ne 0 ]; then
++		ocf_log warn "Unable to backup $ctdb_config to ${ctdb_config}.ctdb-ra-orig"
++	fi
++
++	local log_option="file:$OCF_RESKEY_ctdb_logfile"
++	if [ "$OCF_RESKEY_ctdb_logfile" = "syslog" ]; then
++		log_option="syslog"
++	fi
++
++	local start_as_disabled="false"
++	ocf_is_true "$OCF_RESKEY_ctdb_start_as_disabled" && start_as_disabled="true"
++
++	local dbdir_volatile="$OCF_RESKEY_ctdb_dbdir/volatile"
++	[ -d "$dbdir_volatile" ] || mkdir -p "$dbdir_volatile" 2>/dev/null
++	local dbdir_persistent="$OCF_RESKEY_ctdb_dbdir/persistent"
++	[ -d "$dbdir_persistent" ] || mkdir -p "$dbdir_persistent" 2>/dev/null
++	local dbdir_state="$OCF_RESKEY_ctdb_dbdir/state"
++	[ -d "$dbdir_state" ] || mkdir -p "$dbdir_state" 2>/dev/null
++
++cat >$ctdb_config <<EOF
++# CTDB-RA: Auto-generated
++[logging]
++	location = $log_option
++	log level = $OCF_RESKEY_ctdb_debuglevel
++[cluster]
++	recovery lock = $OCF_RESKEY_ctdb_recovery_lock
++[database]
++	volatile database directory = $dbdir_volatile
++	persistent database directory = $dbdir_persistent
++	state database directory = $dbdir_state
++[legacy]
++	start as disabled = $start_as_disabled
++EOF
++}
++
+ # Generate a new, minimal CTDB config file that's just enough
+ # to get CTDB running as configured by the RA parameters.
+ generate_ctdb_sysconfig() {
+@@ -589,6 +677,58 @@ EOF
+ }
+ 
+ 
++invoke_ctdbd() {
++	local vers="$1"
++
++	ocf_version_cmp "$vers" "4.9.0"
++	if [ "$?" -ne "0" ]; then
++		# With 4.9+, all ctdbd binary parameters are provided as
++		# config settings
++		$OCF_RESKEY_ctdbd_binary
++		return
++	fi
++
++	# Use logfile by default, or syslog if asked for
++	local log_option
++	# --logging supported from v4.3.0 and --logfile / --syslog support
++	# has been removed from newer versions
++	ocf_version_cmp "$vers" "4.2.14"
++	if [ "$?" -eq "2" ]; then
++		log_option="--logging=file:$OCF_RESKEY_ctdb_logfile"
++		if [ "$OCF_RESKEY_ctdb_logfile" = "syslog" ]; then
++			log_option="--logging=syslog"
++		fi
++	else
++		log_option="--logfile=$OCF_RESKEY_ctdb_logfile"
++		if [ "$OCF_RESKEY_ctdb_logfile" = "syslog" ]; then
++			log_option="--syslog"
++		fi
++	fi
++
++	# public addresses file (should not be present, but need to set for correctness if it is)
++	local pub_addr_option
++	pub_addr_option=""
++	[ -f "${OCF_RESKEY_ctdb_config_dir}/public_addresses" ] && \
++		pub_addr_option="--public-addresses=${OCF_RESKEY_ctdb_config_dir}/public_addresses"
++	# start as disabled
++	local start_as_disabled
++	start_as_disabled="--start-as-disabled"
++	ocf_is_true "$OCF_RESKEY_ctdb_start_as_disabled" || start_as_disabled=""
++
++	$OCF_RESKEY_ctdbd_binary \
++		--reclock="$OCF_RESKEY_ctdb_recovery_lock" \
++		--nlist="$OCF_RESKEY_ctdb_config_dir/nodes" \
++		--socket="$OCF_RESKEY_ctdb_socket" \
++		--dbdir="$OCF_RESKEY_ctdb_dbdir" \
++		--dbdir-persistent="$OCF_RESKEY_ctdb_dbdir/persistent" \
++		--event-script-dir="$OCF_RESKEY_ctdb_config_dir/events.d" \
++		--notification-script="$OCF_RESKEY_ctdb_config_dir/notify.sh" \
++		--transport=tcp \
++		$start_as_disabled $log_option $pub_addr_option \
++		-d "$OCF_RESKEY_ctdb_debuglevel"
++}
++
++
+ ctdb_usage() {
+ 	cat <<END
+ usage: $0 {start|stop|monitor|validate-all|meta-data}
+@@ -614,27 +754,26 @@ ctdb_start() {
+ 		return $OCF_ERR_GENERIC
+ 	fi
+ 
+-	# Generate new CTDB sysconfig
+-	generate_ctdb_sysconfig
+-	enable_event_scripts
++	local version=$(ctdb_version)
+ 
+-	# Use logfile by default, or syslog if asked for
+-	local log_option
+-	# --logging supported from v4.3.0 and --logfile / --syslog support 
+-	# has been removed from newer versions
+-	version=$(ctdb version | awk '{print $NF}')
+-	ocf_version_cmp "$version" "4.2.14"
+-	if [ "$?" -eq "2" ]; then
+-		log_option="--logging=file:$OCF_RESKEY_ctdb_logfile"
+-		if [ "$OCF_RESKEY_ctdb_logfile" = "syslog" ]; then
+-			log_option="--logging=syslog"
+-		fi
++	ocf_version_cmp "$version" "4.9.0"
++	if [ "$?" -eq "0" ]; then
++		# prior to 4.9, ctdbd parameters are in sysconfig or passed as
++		# binary arguments
++		generate_ctdb_sysconfig
++
++		# prior to 4.9, event script enablement without a running
++		# ctdbd is done by chmoding the scripts directly
++		enable_event_scripts_chmod
+ 	else
+-		log_option="--logfile=$OCF_RESKEY_ctdb_logfile"
+-		if [ "$OCF_RESKEY_ctdb_logfile" = "syslog" ]; then
+-			log_option="--syslog"
+-		fi
++		# 4.9+ moves all ctdbd parameters to ctdb.conf
++		generate_ctdb_config
++
++		# 4.9+ event scripts can be enabled with ctdb directly, which
++		# performs a symlink
++		enable_event_scripts_symlink
+ 	fi
++
+ 	if [ ! -d "$(dirname $OCF_RESKEY_ctdb_logfile)" ]; then
+ 		# ensure the logfile's directory exists, otherwise ctdb will fail to start
+ 		mkdir -p $(dirname $OCF_RESKEY_ctdb_logfile)
+@@ -643,33 +782,14 @@ ctdb_start() {
+ 	# ensure ctdb's rundir exists, otherwise it will fail to start
+ 	mkdir -p $OCF_RESKEY_ctdb_rundir 2>/dev/null
+ 
+-	# public addresses file (should not be present, but need to set for correctness if it is)
+-	local pub_addr_option
+-	pub_addr_option=""
+-	[ -f "${OCF_RESKEY_ctdb_config_dir}/public_addresses" ] && \
+-		pub_addr_option="--public-addresses=${OCF_RESKEY_ctdb_config_dir}/public_addresses"
+-	# start as disabled
+-	local start_as_disabled
+-	start_as_disabled="--start-as-disabled"
+-	ocf_is_true "$OCF_RESKEY_ctdb_start_as_disabled" || start_as_disabled=""
+-
+ 	# set nofile ulimit for ctdbd process
+ 	if [ -n "$OCF_RESKEY_ctdb_max_open_files" ]; then
+ 		ulimit -n "$OCF_RESKEY_ctdb_max_open_files"
+ 	fi
+ 
+ 	# Start her up
+-	"$OCF_RESKEY_ctdbd_binary" \
+-		--reclock="$OCF_RESKEY_ctdb_recovery_lock" \
+-		--nlist="$OCF_RESKEY_ctdb_config_dir/nodes" \
+-		--socket="$OCF_RESKEY_ctdb_socket" \
+-		--dbdir="$OCF_RESKEY_ctdb_dbdir" \
+-		--dbdir-persistent="$OCF_RESKEY_ctdb_dbdir/persistent" \
+-		--event-script-dir="$OCF_RESKEY_ctdb_config_dir/events.d" \
+-		--notification-script="$OCF_RESKEY_ctdb_config_dir/notify.sh" \
+-		--transport=tcp \
+-		$start_as_disabled $log_option $pub_addr_option \
+-		-d "$OCF_RESKEY_ctdb_debuglevel"
++	invoke_ctdbd "$version"
++
+ 	if [ $? -ne 0 ]; then
+ 		# cleanup smb.conf
+ 		cleanup_smb_conf
+@@ -688,7 +808,7 @@ ctdb_start() {
+ 			if [ $? -ne 0 ]; then
+ 				# CTDB will be running, kill it before returning
+ 				ctdb_stop
+-				ocf_exit_reason "Can't invoke $OCF_RESKEY_ctdb_binary --socket=$OCF_RESKEY_ctdb_socket status"
++				ocf_exit_reason "Can't invoke $OCF_RESKEY_ctdb_binary status"
+ 				return $OCF_ERR_GENERIC
+ 			fi
+ 			if ! echo "$status" | grep -qs 'UNHEALTHY (THIS'; then
+@@ -725,7 +845,7 @@ ctdb_stop() {
+ 		[ $count -gt 10 ] && {
+ 			ocf_log info "killing ctdbd "
+ 			pkill -9 -f "$OCF_RESKEY_ctdbd_binary"
+-			pkill -9 -f "${OCF_RESKEY_ctdb_config_dir}/events.d/"
++			pkill -9 -f "${OCF_RESKEY_ctdb_config_dir}/events"
+ 		}
+ 	done
+ 
+
+From b4753b7cb46045bb9e7ed5e3a0a20f6104264b12 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@suse.de>
+Date: Wed, 10 Jul 2019 17:11:50 +0200
+Subject: [PATCH 2/3] CTDB: generate script.options file for 4.9+
+
+Event scripts in CTDB 4.9+ ignore sysconfig configuration and instead
+parse parameters in ctdb_config_dir/script.options .
+
+Signed-off-by: David Disseldorp <ddiss@suse.de>
+---
+ heartbeat/CTDB.in | 35 ++++++++++++++++++++++++++++++-----
+ 1 file changed, 30 insertions(+), 5 deletions(-)
+
+diff --git a/heartbeat/CTDB.in b/heartbeat/CTDB.in
+index 79a2f97e7..0906f3da9 100755
+--- a/heartbeat/CTDB.in
++++ b/heartbeat/CTDB.in
+@@ -242,6 +242,7 @@ If the amount of free memory drops below this value the node will
+ become unhealthy and ctdb and all managed services will be shutdown.
+ Once this occurs, the administrator needs to find the reason for the
+ OOM situation, rectify it and restart ctdb with "service ctdb start".
++With CTDB 4.4.0 and later this parameter is ignored.
+ </longdesc>
+ <shortdesc lang="en">Minimum amount of free memory (MB)</shortdesc>
+ <content type="integer" default="${OCF_RESKEY_ctdb_monitor_free_memory_default}" />
+@@ -600,8 +601,10 @@ cleanup_smb_conf() {
+ 	mv "$OCF_RESKEY_smb_conf.$$" "$OCF_RESKEY_smb_conf"
+ }
+ 
+-append_ctdb_sysconfig() {
+-	[ -n "$2" ] && echo "$1=$2" >> "$CTDB_SYSCONFIG"
++append_conf() {
++	local file_path="$1"
++	shift
++	[ -n "$2" ] && echo "$1=$2" >> "$file_path"
+ }
+ 
+ generate_ctdb_config() {
+@@ -644,6 +647,25 @@ cat >$ctdb_config <<EOF
+ EOF
+ }
+ 
++generate_event_script_options() {
++	local script_options="$OCF_RESKEY_ctdb_config_dir/script.options"
++
++	# Backup existing config if we're not already using an auto-generated one
++	grep -qa '# CTDB-RA: Auto-generated' $script_options || cp -p $script_options ${script_options}.ctdb-ra-orig
++	if [ $? -ne 0 ]; then
++		ocf_log warn "Unable to backup $script_options to ${script_options}.ctdb-ra-orig"
++	fi
++
++cat >$script_options <<EOF
++# CTDB-RA: Auto-generated
++CTDB_SAMBA_SKIP_SHARE_CHECK=$(ocf_is_true "$OCF_RESKEY_ctdb_samba_skip_share_check" && echo 'yes' || echo 'no')
++EOF
++
++	append_conf "$script_options" CTDB_SERVICE_SMB $OCF_RESKEY_ctdb_service_smb
++	append_conf "$script_options" CTDB_SERVICE_NMB $OCF_RESKEY_ctdb_service_nmb
++	append_conf "$script_options" CTDB_SERVICE_WINBIND $OCF_RESKEY_ctdb_service_winbind
++}
++
+ # Generate a new, minimal CTDB config file that's just enough
+ # to get CTDB running as configured by the RA parameters.
+ generate_ctdb_sysconfig() {
+@@ -671,9 +693,9 @@ CTDB_SAMBA_SKIP_SHARE_CHECK=$(ocf_is_true "$OCF_RESKEY_ctdb_samba_skip_share_che
+ CTDB_MANAGES_SAMBA=$(ocf_is_true "$OCF_RESKEY_ctdb_manages_samba" && echo 'yes' || echo 'no')
+ CTDB_MANAGES_WINBIND=$(ocf_is_true "$OCF_RESKEY_ctdb_manages_winbind" && echo 'yes' || echo 'no')
+ EOF
+-	append_ctdb_sysconfig CTDB_SERVICE_SMB $OCF_RESKEY_ctdb_service_smb
+-	append_ctdb_sysconfig CTDB_SERVICE_NMB $OCF_RESKEY_ctdb_service_nmb
+-	append_ctdb_sysconfig CTDB_SERVICE_WINBIND $OCF_RESKEY_ctdb_service_winbind
++	append_conf "$CTDB_SYSCONFIG" CTDB_SERVICE_SMB $OCF_RESKEY_ctdb_service_smb
++	append_conf "$CTDB_SYSCONFIG" CTDB_SERVICE_NMB $OCF_RESKEY_ctdb_service_nmb
++	append_conf "$CTDB_SYSCONFIG" CTDB_SERVICE_WINBIND $OCF_RESKEY_ctdb_service_winbind
+ }
+ 
+ 
+@@ -769,6 +791,9 @@ ctdb_start() {
+ 		# 4.9+ moves all ctdbd parameters to ctdb.conf
+ 		generate_ctdb_config
+ 
++		# 4.9+ event script options are in script.options
++		generate_event_script_options
++
+ 		# 4.9+ event scripts can be enabled with ctdb directly, which
+ 		# performs a symlink
+ 		enable_event_scripts_symlink
+
+From 0a8610711f90c4cc7a2b380a4795f463532d9520 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@suse.de>
+Date: Wed, 10 Jul 2019 17:54:01 +0200
+Subject: [PATCH 3/3] CTDB: drop sysconfig presence check during validate
+
+There are two reasons to avoid this check:
+- for ctdb versions prior to 4.9.0, the sysconfig file is generated by
+  the resource agent start hook *after* ctdb_validate() is called.
+- post 4.9.0 versions don't use the sysconfig file.
+
+Signed-off-by: David Disseldorp <ddiss@suse.de>
+---
+ heartbeat/CTDB.in | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/heartbeat/CTDB.in b/heartbeat/CTDB.in
+index 0906f3da9..15d78902e 100755
+--- a/heartbeat/CTDB.in
++++ b/heartbeat/CTDB.in
+@@ -925,11 +925,6 @@ ctdb_validate() {
+ 		check_binary $binary
+ 	done
+ 
+-	if [ -z "$CTDB_SYSCONFIG" ]; then
+-		ocf_exit_reason "Can't find CTDB config file (expecting /etc/sysconfig/ctdb, /etc/default/ctdb or similar)"
+-		return $OCF_ERR_INSTALLED
+-	fi
+-
+ 	if ocf_is_true "$OCF_RESKEY_ctdb_manages_samba" && [ ! -f "$OCF_RESKEY_smb_conf" ]; then
+ 		ocf_exit_reason "Samba config file '$OCF_RESKEY_smb_conf' does not exist."
+ 		return $OCF_ERR_INSTALLED

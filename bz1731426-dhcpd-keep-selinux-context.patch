@@ -1,0 +1,28 @@
+From c8c073ed81884128b0b3955fb0b0bd23661044a2 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Wed, 12 Jun 2019 12:45:08 +0200
+Subject: [PATCH] dhcpd: keep SELinux context
+
+---
+ heartbeat/dhcpd | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/heartbeat/dhcpd b/heartbeat/dhcpd
+index 8b2d8b695..46027b39b 100755
+--- a/heartbeat/dhcpd
++++ b/heartbeat/dhcpd
+@@ -337,12 +337,12 @@ dhcpd_initialize_chroot() {
+     done | sort -u`
+     for i in $cplibs ; do
+ 	if [ -s "$i" ]; then
+-	    cp -pL "$i" "${OCF_RESKEY_chrooted_path}/$libdir/" ||
++	    cp -aL "$i" "${OCF_RESKEY_chrooted_path}/$libdir/" ||
+ 		{ ocf_exit_reason "could not copy $i to chroot jail"; return $OCF_ERR_GENERIC; }
+ 	fi
+     done
+ 
+-   return $OCF_SUCCESS
++    return $OCF_SUCCESS
+ }
+ 
+ # Initialize a non-chroot environment
