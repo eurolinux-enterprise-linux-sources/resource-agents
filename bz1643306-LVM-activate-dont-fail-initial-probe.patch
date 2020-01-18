@@ -1,0 +1,24 @@
+From 848d62c32b355a03c2ad8d246eb3e34b04af07ca Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Wed, 9 Jan 2019 16:49:41 +0100
+Subject: [PATCH] LVM-activate: dont fail initial probe
+
+---
+ heartbeat/LVM-activate | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/heartbeat/LVM-activate b/heartbeat/LVM-activate
+index f46932c1c..49ab717a3 100755
+--- a/heartbeat/LVM-activate
++++ b/heartbeat/LVM-activate
+@@ -323,6 +323,10 @@ lvmlockd_check()
+ 
+ 	# Good: lvmlockd is running, and clvmd is not running
+ 	if ! pgrep lvmlockd >/dev/null 2>&1 ; then
++		if ocf_is_probe; then
++			exit $OCF_NOT_RUNNING
++		fi
++
+ 		ocf_exit_reason "lvmlockd daemon is not running!"
+ 		exit $OCF_ERR_CONFIGURED
+ 	fi

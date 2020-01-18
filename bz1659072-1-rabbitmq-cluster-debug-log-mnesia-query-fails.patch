@@ -1,0 +1,32 @@
+From 2b6e4a94c847129dd014a1efa733cd1b4a2448e6 Mon Sep 17 00:00:00 2001
+From: John Eckersberg <jeckersb@redhat.com>
+Date: Fri, 2 Nov 2018 10:11:41 -0400
+Subject: [PATCH] rabbitmq-cluster: debug log detailed output when mnesia query
+ fails
+
+---
+ heartbeat/rabbitmq-cluster | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/heartbeat/rabbitmq-cluster b/heartbeat/rabbitmq-cluster
+index 78b2bbadf..fabfeedfb 100755
+--- a/heartbeat/rabbitmq-cluster
++++ b/heartbeat/rabbitmq-cluster
+@@ -191,7 +191,8 @@ rmq_app_running() {
+ rmq_monitor() {
+ 	local rc
+ 
+-	if $RMQ_CTL eval 'rabbit_mnesia:cluster_status_from_mnesia().' | grep -q '^{ok'; then
++	status=$($RMQ_CTL eval 'rabbit_mnesia:cluster_status_from_mnesia().' 2>&1)
++	if echo "${status}" | grep -q '^{ok'; then
+ 		pcs_running=$(rmq_join_list | wc -w)
+ 		ocf_log debug "Pacemaker thinks ${pcs_running} RabbitMQ nodes are running"
+ 		rmq_running=$($RMQ_CTL eval 'length(mnesia:system_info(running_db_nodes)).')
+@@ -209,6 +210,7 @@ rmq_monitor() {
+ 		return $OCF_SUCCESS
+ 	else
+ 		ocf_log info "RabbitMQ server could not get cluster status from mnesia"
++		ocf_log debug "${status}"
+ 		rmq_delete_nodename
+ 		return $OCF_NOT_RUNNING
+ 	fi

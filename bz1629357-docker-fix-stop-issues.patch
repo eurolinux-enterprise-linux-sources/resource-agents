@@ -1,0 +1,88 @@
+From 5949405d0031a4aba91c81cb28c24821ad2d439a Mon Sep 17 00:00:00 2001
+From: Reid Wahl <nwahl@redhat.com>
+Date: Thu, 3 Jan 2019 15:05:20 -0800
+Subject: [PATCH] docker: Fix issues with stop operation
+
+The docker RA's stop operation doesn't behave properly in some cases.
+  1. It returns a false success code in case of an error response from
+     the daemon.
+  2. It fails at `remove_container()` if the container does not exist
+     but another docker object of the same name does exist.
+
+In case #1, the `container_exists()` function returns the same exit code
+(1) if the container is not found (an expected error) or if there is an
+error response from the docker daemon (an unexpected error). These types
+of errors should be handled differently.
+
+In case #2, the `docker inspect` calls do not limit their search to
+containers. So if a non-container object is found with a matching name,
+the RA attempts to remove a container by that name. Such a container may
+not exist.
+
+This patch fixes these issues as follows:
+  1. Match an error response in `container_exists()` against the string
+     "No such container".
+  2. Add `--type=container` to the `docker inspect` calls to restrict
+     the match.
+---
+ heartbeat/docker | 26 ++++++++++++++++++++++----
+ 1 file changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/heartbeat/docker b/heartbeat/docker
+index f5ba83ff2..c206344ad 100755
+--- a/heartbeat/docker
++++ b/heartbeat/docker
+@@ -215,7 +215,7 @@ monitor_cmd_exec()
+ 		out=$(docker exec ${CONTAINER} $OCF_RESKEY_monitor_cmd 2>&1)
+ 		rc=$?
+ 	else
+-		out=$(echo "$OCF_RESKEY_monitor_cmd" | nsenter --target $(docker inspect --format {{.State.Pid}} ${CONTAINER}) --mount --uts --ipc --net --pid 2>&1)
++		out=$(echo "$OCF_RESKEY_monitor_cmd" | nsenter --target $(docker inspect --type=container --format {{.State.Pid}} ${CONTAINER}) --mount --uts --ipc --net --pid 2>&1)
+ 		rc=$?
+ 	fi
+ 
+@@ -236,7 +236,25 @@ monitor_cmd_exec()
+ 
+ container_exists()
+ {
+-	docker inspect --format {{.State.Running}} $CONTAINER | egrep '(true|false)' >/dev/null 2>&1
++	local err
++
++	err=$(docker inspect --type=container $CONTAINER 2>&1 >/dev/null)
++
++	if [ $? -ne $OCF_SUCCESS ]; then
++		case $err in
++			*"No such container"*)
++				# Return failure instead of exiting if container does not exist
++				return 1
++				;;
++			*)
++				# Exit if error running command
++				ocf_exit_reason "$err"
++				exit $OCF_ERR_GENERIC
++				;;
++		esac
++	fi
++
++	return $OCF_SUCCESS
+ }
+ 
+ remove_container()
+@@ -265,7 +283,7 @@ docker_simple_status()
+ 	fi
+ 
+ 	# retrieve the 'Running' attribute for the container
+-	val=$(docker inspect --format {{.State.Running}} $CONTAINER 2>/dev/null)
++	val=$(docker inspect --type=container --format {{.State.Running}} $CONTAINER 2>/dev/null)
+ 	if [ $? -ne 0 ]; then
+ 		#not running as a result of container not being found
+ 		return $OCF_NOT_RUNNING
+@@ -295,7 +313,7 @@ docker_health_status()
+                 # if starting takes longer than monitor timeout then upstream will make this fail.
+                 while
+ 
+-                        val=$(docker inspect --format {{.State.Health.Status}} $CONTAINER 2>/dev/null)
++                        val=$(docker inspect --type=container --format {{.State.Health.Status}} $CONTAINER 2>/dev/null)
+                         if [ $? -ne 0 ]; then
+                                 #not healthy as a result of container not being found
+                                 return $OCF_NOT_RUNNING

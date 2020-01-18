@@ -1,0 +1,39 @@
+From 1ff4ce7cbe58b5309f00ac1bbe124c562b6dcaf6 Mon Sep 17 00:00:00 2001
+From: David Disseldorp <ddiss@suse.de>
+Date: Fri, 27 Jul 2018 16:02:26 +0200
+Subject: [PATCH] CTDB: explicitly use bash shell
+
+Upcoming recovery lock substring processing is bash specific.
+
+Signed-off-by: David Disseldorp <ddiss@suse.de>
+---
+ configure.ac                | 1 +
+ heartbeat/{CTDB => CTDB.in} | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+ rename heartbeat/{CTDB => CTDB.in} (99%)
+
+diff --git a/configure.ac b/configure.ac
+index 039b4942c..10f5314da 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -978,6 +978,7 @@ AC_CONFIG_FILES([heartbeat/slapd], [chmod +x heartbeat/slapd])
+ AC_CONFIG_FILES([heartbeat/sybaseASE], [chmod +x heartbeat/sybaseASE])
+ AC_CONFIG_FILES([heartbeat/syslog-ng], [chmod +x heartbeat/syslog-ng])
+ AC_CONFIG_FILES([heartbeat/vsftpd], [chmod +x heartbeat/vsftpd])
++AC_CONFIG_FILES([heartbeat/CTDB], [chmod +x heartbeat/CTDB])
+ AC_CONFIG_FILES([rgmanager/src/resources/ASEHAagent.sh], [chmod +x rgmanager/src/resources/ASEHAagent.sh])
+ AC_CONFIG_FILES([rgmanager/src/resources/apache.sh], [chmod +x rgmanager/src/resources/apache.sh])
+ AC_CONFIG_FILES([rgmanager/src/resources/bind-mount.sh], [chmod +x rgmanager/src/resources/bind-mount.sh])
+diff --git a/heartbeat/CTDB b/heartbeat/CTDB.in
+similarity index 99%
+rename from heartbeat/CTDB
+rename to heartbeat/CTDB.in
+index 28e58cea0..7d87a4ef7 100755
+--- a/heartbeat/CTDB
++++ b/heartbeat/CTDB.in
+@@ -1,4 +1,4 @@
+-#!/bin/sh
++#!@BASH_SHELL@
+ #
+ #             OCF Resource Agent for managing CTDB
+ #

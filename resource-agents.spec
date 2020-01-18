@@ -95,7 +95,7 @@
 Name:		resource-agents
 Summary:	Open Source HA Reusable Cluster Resource Scripts
 Version:	4.1.1
-Release:	12%{?dist}.19
+Release:	30%{?dist}
 License:	GPLv2+ and LGPLv2+ and ASL 2.0
 URL:		https://github.com/ClusterLabs/resource-agents
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
@@ -146,18 +146,34 @@ Patch25:	bz1619428-2-LVM-activate-parameters-access-mode-fixes.patch
 Patch26:	bz1637823-1-nfsserver-mount-rpc_pipefs.patch
 Patch27:	bz1637823-2-nfsserver-var-lib-nfs-fix.patch
 Patch28:	bz1641944-rabbitmq-cluster-monitor-mnesia-status.patch
-Patch29:	bz1641946-1-rabbitmq-cluster-fail-in-minority-partition.patch
-Patch30:	bz1641946-2-rabbitmq-cluster-fix-stop-regression.patch
-Patch31:	bz1657138-rabbitmq-cluster-ensure-node-attribures-removed.patch
-Patch32:	bz1656733-rabbitmq-cluster-retry-start-cluster-join-fails.patch
-#Patch33:	bz1692889-1-rabbitmq-cluster-debug-log-mnesia-query-fails.patch
-#Patch34:	bz1692889-2-rabbitmq-cluster-suppress-additional-output.patch
-Patch35:	bz1692890-ocf_log-do-not-log-debug-when-HA_debug-unset.patch
-Patch36:	bz1692973-tomcat-use-systemd-when-catalina.sh-unavailable.patch
-Patch37:	bz1711165-aws-vpc-move-ip-avoid-possible-race-condition.patch
-Patch38:	bz1711925-aws-vpc-move-ip-1-multi-route-table-support.patch
-Patch39:	bz1711925-aws-vpc-move-ip-2-fix-route-update-multi-NICs.patch
-Patch40:	bz1721274-SAPHanaSR-monitor-fix-tolower-error.patch
+Patch29:	bz1641946-rabbitmq-cluster-fail-when-in-minority-partition.patch
+Patch30:	bz1639826-rabbitmq-cluster-fix-stop-regression.patch
+Patch31:	bz1647252-vdo-vol-fix-monitor-action.patch
+Patch32:	bz1646770-tomcat-use-systemd-when-catalina.sh-unavailable.patch
+Patch33:	bz1656368-rabbitmq-cluster-ensure-node-attribures-removed.patch
+Patch34:	bz1655655-ocf_log-do-not-log-debug-when-HA_debug-unset.patch
+Patch35:	bz1643306-LVM-activate-dont-fail-initial-probe.patch
+Patch36:	bz1575095-rabbitmq-cluster-retry-start-cluster-join-fails.patch
+Patch37:	bz1659072-1-rabbitmq-cluster-debug-log-mnesia-query-fails.patch
+Patch38:	bz1659072-2-rabbitmq-cluster-suppress-additional-output.patch
+Patch39:	bz1629357-docker-fix-stop-issues.patch
+Patch40:	bz1669137-Route-make-family-parameter-optional.patch
+Patch41:	bz1549579-1-clvm-exclusive-mode-support.patch
+Patch42:	bz1642069-1-SAPInstance-add-reload-action.patch
+Patch43:	bz1642069-2-SAPInstance-improve-profile-detection.patch
+Patch44:	bz1642069-3-SAPInstance-metadata-improvements.patch
+Patch45:	bz1667413-1-LVM-activate-support-LVs-from-same-VG.patch
+Patch46:	bz1667413-2-LVM-activate-only-count-volumes.patch
+Patch47:	bz1651790-1-CTDB-explicitly-use-bash-shell.patch
+Patch48:	bz1651790-2-CTDB-add-ctdb_max_open_files-parameter.patch
+Patch49:	bz1504055-IPsrcaddr-fix-regression-without-NetworkManager.patch
+Patch50:	bz1598969-iSCSILogicalUnit-create-iqn-when-it-doesnt-exist.patch
+Patch51:	bz1693658-aws-vpc-move-ip-avoid-possible-race-condition.patch
+Patch52:	bz1697558-aws-vpc-move-ip-1-multi-route-table-support.patch
+Patch53:	bz1697558-aws-vpc-move-ip-2-fix-route-update-multi-NICs.patch
+Patch54:	bz1549579-2-ocf_is_true-add-True-to-regexp.patch
+Patch55:	bz1363902-SAPHanaSR-monitor-fix-tolower-error.patch
+
 # bundle patches
 Patch1000:	bz1568588-7-gcp-bundled.patch
 Patch1001:	bz1568588-8-google-cloud-sdk-fixes.patch
@@ -351,13 +367,13 @@ SAP instances to be managed in a cluster environment.
 License:	GPLv2+
 Summary:	SAP HANA Scale-Out cluster resource agents
 Version:	0.163.2
-Release:	1%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.5
+Release:	7%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
 Group:		System Environment/Base
 %else
 Group:		Productivity/Clustering/HA
 %endif
-Requires:	resource-agents >= 4.1.1-12
+Requires:	resource-agents >= 4.1.1-25
 Requires:	perl
 
 %description sap-hana-scaleout
@@ -371,13 +387,13 @@ environment.
 License:	GPLv2+
 Summary:	SAP cluster connector script
 Version:	3.0.1
-Release:	1%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.5
+Release:	7%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
 Group:		System Environment/Base
 %else
 Group:		Productivity/Clustering/HA
 %endif
-Requires:	resource-agents-sap >= 4.1.1-12
+Requires:	resource-agents-sap >= 4.1.1-25
 Requires:	perl
 
 %description -n sap-cluster-connector
@@ -428,14 +444,29 @@ exit 1
 %patch30 -p1
 %patch31 -p1
 %patch32 -p1
-#%patch33 -p1
-#%patch34 -p1
+%patch33 -p1
+%patch34 -p1
 %patch35 -p1
 %patch36 -p1
-%patch37 -p1 -F2
+%patch37 -p1
 %patch38 -p1
 %patch39 -p1
 %patch40 -p1
+%patch41 -p1
+%patch42 -p1
+%patch43 -p1
+%patch44 -p1
+%patch45 -p1
+%patch46 -p1
+%patch47 -p1
+%patch48 -p1
+%patch49 -p1
+%patch50 -p1
+%patch51 -p1 -F2
+%patch52 -p1
+%patch53 -p1
+%patch54 -p1
+%patch55 -p1
 
 # add SAPHana agents to Makefile.am
 mv %{saphana_prefix}-%{saphana_hash}/SAPHana/ra/SAPHana* heartbeat
@@ -469,11 +500,12 @@ rm -rf %{googlecloudsdk_dir}/bin/{bootstrapping,bq,dev_appserver.py,docker-crede
 rm -rf %{googlecloudsdk_dir}/lib/third_party/*/python3
 # remove python-rsa
 rm -rf %{googlecloudsdk_dir}/lib/third_party/rsa
+# remove grpc
+rm -rf %{googlecloudsdk_dir}/lib/third_party/grpc
 # docs/licenses
 cp %{googlecloudsdk_dir}/README %{googlecloudsdk}_README
 cp %{googlecloudsdk_dir}/lib/third_party/argparse/README.txt %{googlecloudsdk}_argparse_README.txt
 cp %{googlecloudsdk_dir}/LICENSE %{googlecloudsdk}_LICENSE
-cp %{googlecloudsdk_dir}/lib/third_party/grpc/LICENSE %{googlecloudsdk}_grpc_LICENSE
 cp %{googlecloudsdk_dir}/lib/third_party/httplib2/LICENSE %{googlecloudsdk}_httplib2_LICENSE
 cp %{googlecloudsdk_dir}/lib/third_party/contextlib2/LICENSE %{googlecloudsdk}_contextlib2_LICENSE
 cp %{googlecloudsdk_dir}/lib/third_party/concurrent/LICENSE %{googlecloudsdk}_concurrent_LICENSE
@@ -1065,44 +1097,90 @@ ccs_update_schema > /dev/null 2>&1 ||:
 %endif
 
 %changelog
-* Thu Jun 27 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.19
+* Thu Jun 27 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-30
 - resource-agents-sap-hana-scaleout: new subpackage
 
-  Resolves: rhbz#1721274
+  Resolves: rhbz#1363902
 
-* Tue Jun 25 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.17
+* Tue Jun 25 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-27
 - sap-cluster-connector: new subpackage
 
-  Resolves: rhbz#1721412
+  Resolves: rhbz#1710956
 
-* Tue May 21 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.13
-- aws-vpc-move-ip: use "--query" to avoid a possible race condition
+* Tue Jun 18 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-24
+- clvm: support exclusive mode
+
+  Resolves: rhbz#1549579
+
+* Mon May 20 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-23
 - aws-vpc-move-ip: add multi route-table support and fix issue
   w/multiple NICs
 
-  Resolves: rhbz#1711165
-  Resolves: rhbz#1711925
+  Resolves: rhbz#1697558
 
-* Thu Apr 11 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.10
+* Fri Apr  5 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-22
+- IPsrcaddr: make proto optional to fix regression when used without
+  NetworkManager
+
+  Resolves: rhbz#1504055
+
+* Thu Mar 28 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-21
+- aws-vpc-move-ip: use "--query" to avoid a possible race condition
+
+  Resolves: rhbz#1693658
+
+* Tue Mar 26 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-20
+- IPsrcaddr: add proto and table parameters
+- iSCSILogicalUnit: only create iqn when it doesnt exist
+
+  Resolves: rhbz#1504055
+  Resolves: rhbz#1598969
+
+* Thu Feb 28 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-19
+- CTDB: add ctdb_max_open_files parameter
+
+  Resolves: rhbz#1651790
+
+* Wed Feb 27 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-18
+- SAPInstance: add reload-action
+- LVM-activate: support LVs from same VG
+- Remove grpc from bundle
+
+  Resolves: rhbz#1642069
+  Resolves: rhbz#1667413
+  Resolves: rhbz#1683629
+
+* Thu Jan 24 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-17
+- Route: make family parameter optional
+
+  Resolves: rhbz#1669137
+
+* Thu Jan 17 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-16
+- rabbitmq-cluster: suppress additional output
+- docker: fix stop issues
+
+  Resolves: rhbz#1659072
+  Resolves: rhbz#1629357
+
+* Thu Jan 17 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-15
+- rabbitmq-cluster: ensure node attributes are removed
 - ocf_log: do not log debug messages when HA_debug unset
+- LVM-activate: dont fail initial probe
+- rabbitmq-cluster: retry start when cluster join fails
+
+  Resolves: rhbz#1656368
+  Resolves: rhbz#1655655
+  Resolves: rhbz#1643306
+  Resolves: rhbz#1575095
+
+* Wed Nov  7 2018 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-14
+- rabbitmq-cluster: fix stop regression
+- vdo-vol: fix monitor-action
 - tomcat: use systemd when catalina.sh is unavailable
 
-  Resolves: rhbz#1655655
+  Resolves: rhbz#1639826
+  Resolves: rhbz#1647252
   Resolves: rhbz#1646770
-
-* Thu Jan 17 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.8
-- rabbitmq-cluster: retry start when cluster join fails
-  Resolves: rhbz#1656733
-
-* Fri Dec  7 2018 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.7
-- rabbitmq-cluster: ensure node attributes are removed
-
-  Resolves: rhbz#1657138
-
-* Wed Nov  7 2018 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.6
-- rabbitmq-cluster: fix stop regression
-
-  Resolves: rhbz#1641946
 
 * Tue Oct 23 2018 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-12.5
 - rabbitmq-cluster: get cluster status from mnesia during monitor

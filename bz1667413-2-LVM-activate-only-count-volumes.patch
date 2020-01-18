@@ -1,0 +1,29 @@
+From ee9a47f97dd8b0cb51033db7879a79588aab409c Mon Sep 17 00:00:00 2001
+From: Valentin Vidic <Valentin.Vidic@CARNet.hr>
+Date: Tue, 15 Jan 2019 15:40:01 +0100
+Subject: [PATCH] LVM-activate: fix dmsetup check
+
+When there are no devices in the system dmsetup outputs one line:
+
+  # dmsetup info -c
+  No devices found
+---
+ heartbeat/LVM-activate | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/heartbeat/LVM-activate b/heartbeat/LVM-activate
+index f46932c1c..c3225e1cb 100755
+--- a/heartbeat/LVM-activate
++++ b/heartbeat/LVM-activate
+@@ -715,9 +715,9 @@ lvm_status() {
+ 	if [ -n "${LV}" ]; then
+ 		# dmsetup ls? It cannot accept device name. It's
+ 		# too heavy to list all DM devices.
+-		dm_count=$(dmsetup info --noheadings --noflush -c -S "vgname=${VG} && lvname=${LV}" |  wc -l )
++		dm_count=$(dmsetup info --noheadings --noflush -c -S "vgname=${VG} && lvname=${LV}" | grep -c -v '^No devices found')
+ 	else
+-		dm_count=$(dmsetup info --noheadings --noflush -c -S "vgname=${VG}" 2>/dev/null | wc -l )
++		dm_count=$(dmsetup info --noheadings --noflush -c -S "vgname=${VG}" | grep -c -v '^No devices found')
+ 	fi
+ 
+ 	if [ $dm_count -eq 0 ]; then

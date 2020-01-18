@@ -1,0 +1,31 @@
+From d95765aba205ea59dcb99378bed4c6d0593ebdb4 Mon Sep 17 00:00:00 2001
+From: fpicot <francois.picot@homesend.com>
+Date: Fri, 11 Jan 2019 11:38:18 -0500
+Subject: [PATCH] Route: make family parameter optional
+
+---
+ heartbeat/Route | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/heartbeat/Route b/heartbeat/Route
+index 67bdf6bfc..2da58bce1 100755
+--- a/heartbeat/Route
++++ b/heartbeat/Route
+@@ -124,7 +124,7 @@ The routing table to be configured for the route.
+ <content type="string" default="" />
+ </parameter>
+ 
+-<parameter name="family" unique="0" required="1">
++<parameter name="family" unique="0">
+ <longdesc lang="en">
+ The address family to be used for the route
+ ip4      IP version 4
+@@ -132,7 +132,7 @@ ip6      IP version 6
+ detect   Detect from 'destination' address.
+ </longdesc>
+ <shortdesc lang="en">Address Family</shortdesc>
+-<content type="string" default="${OCF_RESKEY_family}" />
++<content type="string" default="${OCF_RESKEY_family_default}" />
+ </parameter>
+ 
+ </parameters>

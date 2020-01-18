@@ -1,0 +1,23 @@
+From 13511f843b2b0fa1b8b306beac041e0855be05a6 Mon Sep 17 00:00:00 2001
+From: Valentin Vidic <Valentin.Vidic@CARNet.hr>
+Date: Tue, 15 Jan 2019 15:45:03 +0100
+Subject: [PATCH] LVM-activate: make vgname not uniqe
+
+If activating one lvname at a time, vgname will not be unique.
+---
+ heartbeat/LVM-activate | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/LVM-activate b/heartbeat/LVM-activate
+index f46932c1c..bc448c9c1 100755
+--- a/heartbeat/LVM-activate
++++ b/heartbeat/LVM-activate
+@@ -102,7 +102,7 @@ because some DLM lockspaces might be in use and cannot be closed automatically.
+ <shortdesc lang="en">This agent activates/deactivates logical volumes.</shortdesc>
+ 
+ <parameters>
+-<parameter name="vgname" unique="1" required="1">
++<parameter name="vgname" unique="0" required="1">
+ <longdesc lang="en">
+ The volume group name.
+ </longdesc>

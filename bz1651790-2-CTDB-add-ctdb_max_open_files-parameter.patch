@@ -1,0 +1,40 @@
+From 61f7cb5954d1727f58fab6d642a124ef342c8641 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Wed, 20 Feb 2019 11:24:28 +0100
+Subject: [PATCH] CTDB: add ctdb_max_open_files parameter
+
+---
+ heartbeat/CTDB.in | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/heartbeat/CTDB.in b/heartbeat/CTDB.in
+index 0d58c850a..bbf8ef627 100755
+--- a/heartbeat/CTDB.in
++++ b/heartbeat/CTDB.in
+@@ -288,6 +288,14 @@ What debug level to run at (0-10). Higher means more verbose.
+ <content type="integer" default="2" />
+ </parameter>
+ 
++<parameter name="ctdb_max_open_files" required="0">
++<longdesc lang="en">
++Maximum number of open files (for ulimit -n)
++</longdesc>
++<shortdesc lang="en">Max open files</shortdesc>
++<content type="integer" default="" />
++</parameter>
++
+ <parameter name="smb_conf" unique="0" required="0">
+ <longdesc lang="en">
+ Path to default samba config file.  Only necessary if CTDB
+@@ -611,6 +619,11 @@ ctdb_start() {
+ 	start_as_disabled="--start-as-disabled"
+ 	ocf_is_true "$OCF_RESKEY_ctdb_start_as_disabled" || start_as_disabled=""
+ 
++	# set nofile ulimit for ctdbd process
++	if [ -n "$OCF_RESKEY_ctdb_max_open_files" ]; then
++		ulimit -n "$OCF_RESKEY_ctdb_max_open_files"
++	fi
++
+ 	# Start her up
+ 	"$OCF_RESKEY_ctdbd_binary" \
+ 		--reclock="$OCF_RESKEY_ctdb_recovery_lock" \

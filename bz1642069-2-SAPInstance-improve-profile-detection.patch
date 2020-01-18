@@ -1,0 +1,26 @@
+From 8eda4725a946ca669df035ed0ffdf053a65e1258 Mon Sep 17 00:00:00 2001
+From: Fabian Herschel <fabian.herschel@suse.com>
+Date: Thu, 2 Aug 2018 15:36:31 +0200
+Subject: [PATCH] SAPInstance: Improved SAP instance profile detection
+
+---
+ heartbeat/SAPInstance | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/heartbeat/SAPInstance b/heartbeat/SAPInstance
+index 174ea36ef..eb058cccf 100755
+--- a/heartbeat/SAPInstance
++++ b/heartbeat/SAPInstance
+@@ -371,7 +371,11 @@ sapinstance_init() {
+ 
+   if [ -z "$currentSTART_PROFILE" ]
+   then
+-    SAPSTARTPROFILE="$DIR_PROFILE/START_${InstanceName}_${SAPVIRHOST}"
++    if [ ! -r "$DIR_PROFILE/START_${InstanceName}_${SAPVIRHOST}" -a -r "$DIR_PROFILE/${SID}_${InstanceName}_${SAPVIRHOST}" ]; then
++      SAPSTARTPROFILE="$DIR_PROFILE/${SID}_${InstanceName}_${SAPVIRHOST}"
++    else
++      SAPSTARTPROFILE="$DIR_PROFILE/START_${InstanceName}_${SAPVIRHOST}"
++    fi
+   else
+     SAPSTARTPROFILE="$currentSTART_PROFILE"
+   fi

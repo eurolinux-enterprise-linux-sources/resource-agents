@@ -1,0 +1,12 @@
+diff -uNr a/heartbeat/vdo-vol b/heartbeat/vdo-vol
+--- a/heartbeat/vdo-vol	2018-11-07 09:11:23.037835110 +0100
++++ b/heartbeat/vdo-vol	2018-11-07 09:12:41.322373901 +0100
+@@ -145,7 +145,7 @@
+ 
+ vdo_monitor(){
+ 	status=$(vdo status $OPTIONS 2>&1)
+-	MODE=$(vdostats vdo_vol --verbose | grep "operating mode" | awk '{print $NF}')
++	MODE=$(vdostats --verbose ${OCF_RESKEY_volume} | grep "operating mode" | awk '{print $NF}')
+ 
+ 	case "$status" in
+ 		*"Device mapper status: not available"*)

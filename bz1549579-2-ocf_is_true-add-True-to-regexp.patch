@@ -1,0 +1,22 @@
+From 73b35b74b743403aeebab43205475be6f2938cd5 Mon Sep 17 00:00:00 2001
+From: Oyvind Albrigtsen <oalbrigt@redhat.com>
+Date: Wed, 12 Jun 2019 10:11:07 +0200
+Subject: [PATCH] ocf_is_true: add True to regexp
+
+---
+ heartbeat/ocf-shellfuncs.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/heartbeat/ocf-shellfuncs.in b/heartbeat/ocf-shellfuncs.in
+index b17297e1a..7a97558a5 100644
+--- a/heartbeat/ocf-shellfuncs.in
++++ b/heartbeat/ocf-shellfuncs.in
+@@ -101,7 +101,7 @@ ocf_is_decimal() {
+ 
+ ocf_is_true() {
+ 	case "$1" in
+-	yes|true|1|YES|TRUE|ja|on|ON) true ;;
++	yes|true|1|YES|TRUE|True|ja|on|ON) true ;;
+ 	*)	false ;;
+ 	esac
+ }
