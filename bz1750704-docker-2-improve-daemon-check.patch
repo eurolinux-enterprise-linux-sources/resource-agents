@@ -1,0 +1,99 @@
+From b7ae1bfbe7d393a9e9d993da3da35cc4d1bc9eb4 Mon Sep 17 00:00:00 2001
+From: Michele Baldessari <michele@acksyn.org>
+Date: Wed, 28 Aug 2019 10:46:36 +0200
+Subject: [PATCH] Make the check for the docker daemon being up more robust
+
+This amends 5941b98140b09e39b4dc2ee155817b287ef32859 (Fails docker RA
+gracefully when command not found). That commit checked for a pidfile
+which tends to be less robust in the presence of stale pidfiles and
+also adds a configuration option for the pidfile location which is
+more churn than needed to simply check for a service availability.
+
+Let's simply call 'docker version'. When that commands returns 1 the docker
+daemon is not running and also return OCF_ERR_GENERIC instead of
+OCF_NOT_RUNNING. This is a key point because if the docker daemon
+is stopped and not running it can very well be that the containers
+are still up (e.g. when you use live-restore in docker). In this
+situation we want an explicit fence event to be triggered due to
+the failure of stopping.
+
+Not doing so would mean that the stop operation returned ok and
+for example we'd be starting an A/P resource on a second node all
+the while it was still running on the node there the docker daemon
+was stopped.
+
+We also explicitely catch OCF_ERR_GENERIC in the docker_stop function
+to make our intent clearer.
+
+Tested this in an Openstack deployment and observed the following:
+A) All the usual pcmk operations still correctly work
+B) A 'systemctl stop docker' will eventually trigger a fence operation
+   on the node.
+
+Co-Authored-By: Luca Miccini <lmiccini@redhat.com>
+Co-Authored-By: Damien Ciabrini <dciabrin@redhat.com>
+Signed-off-by: Michele Baldessari <michele@acksyn.org>
+---
+ heartbeat/docker | 25 ++++++++++---------------
+ 1 file changed, 10 insertions(+), 15 deletions(-)
+
+diff --git a/heartbeat/docker b/heartbeat/docker
+index 60e163bda..7c587b962 100755
+--- a/heartbeat/docker
++++ b/heartbeat/docker
+@@ -35,9 +35,6 @@
+ 
+ # Parameter defaults
+ 
+-OCF_RESKEY_daemon_pidfile_default="/var/run/docker.pid"
+-: ${OCF_RESKEY_daemon_pidfile=${OCF_RESKEY_daemon_pidfile_default}}
+-
+ #######################################################################
+ 
+ meta_data()
+@@ -184,15 +182,6 @@ container to be considered healthy.
+ <content type="boolean"/>
+ </parameter>
+ 
+-<parameter name="daemon_pidfile" required="0" unique="0">
+-<longdesc lang="en">
+-The RA will report not running status on hosts where the docker daemon
+-is not running.
+-</longdesc>
+-<shortdesc lang="en">Name of the docker daemon pid file</shortdesc>
+-<content type="string" default="${OCF_RESKEY_daemon_pidfile_default}"/>
+-</parameter>
+-
+ </parameters>
+ 
+ <actions>
+@@ -299,9 +288,13 @@ docker_simple_status()
+ 		return $OCF_ERR_INSTALLED
+ 	fi
+ 
+-	if [ ! -e "$OCF_RESKEY_daemon_pidfile" ]; then
+-		ocf_log err "docker daemon is not running, pid file $OCF_RESKEY_daemon_pidfile not exists"
+-		return $OCF_NOT_RUNNING
++
++	# let's first check if the daemon is up and running.
++	VERSION_OUT=$(docker version)
++	version_ret=$?
++	if [ $version_ret -eq 1 ]; then
++		ocf_exit_reason "Docker service is in error state while checking for ${CONTAINER}, based on image, ${OCF_RESKEY_image}: ${VERSION_OUT}"
++		return $OCF_ERR_GENERIC
+ 	fi
+ 
+ 	container_exists
+@@ -457,9 +450,11 @@ docker_stop()
+ {
+ 	local timeout=60
+ 	docker_simple_status
+-	if [ $? -eq  $OCF_NOT_RUNNING ]; then
++	if [ $? -eq $OCF_NOT_RUNNING ]; then
+ 		remove_container
+ 		return $OCF_SUCCESS
++        elif [ $? -eq $OCF_ERR_GENERIC ]; then
++               return $OCF_ERR_GENERIC
+ 	fi
+ 
+ 	if [ -n "$OCF_RESKEY_CRM_meta_timeout" ]; then

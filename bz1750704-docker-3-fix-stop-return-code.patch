@@ -1,0 +1,41 @@
+From 3d52ec553fc3de82e1d1dcbef949882947915c49 Mon Sep 17 00:00:00 2001
+From: Michele Baldessari <michele@acksyn.org>
+Date: Thu, 29 Aug 2019 08:10:57 +0200
+Subject: [PATCH] Fixup docker_stop condition on error
+
+In docker_stop() let's store the return code of docker_simple_status
+otherwise the second branch of the elif risks reflecting the return
+code of the previous operaiton and not of docker_simple_status()
+
+Retested this with a bunch of stop/start commands on a rabbitmq bundle
+and observed no issues.
+
+This fixes a stop() regression introduced in
+b7ae1bfbe7d393a9e9d993da3da35cc4d1bc9eb4 ("Make the check for the docker
+daemon being up more robust")
+
+Thanks to Kota Akatsuka for spotting it.
+
+Signed-off-by: Michele Baldessari <michele@acksyn.org>
+---
+ heartbeat/docker | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/heartbeat/docker b/heartbeat/docker
+index 7c587b962..41ac42129 100755
+--- a/heartbeat/docker
++++ b/heartbeat/docker
+@@ -450,10 +450,11 @@ docker_stop()
+ {
+ 	local timeout=60
+ 	docker_simple_status
+-	if [ $? -eq $OCF_NOT_RUNNING ]; then
++	ret=$?
++	if [ $ret -eq $OCF_NOT_RUNNING ]; then
+ 		remove_container
+ 		return $OCF_SUCCESS
+-        elif [ $? -eq $OCF_ERR_GENERIC ]; then
++        elif [ $ret -eq $OCF_ERR_GENERIC ]; then
+                return $OCF_ERR_GENERIC
+ 	fi
+ 

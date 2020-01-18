@@ -1,0 +1,50 @@
+From 8b9c49fd965f73709d5a6e2c21987ba26af4856b Mon Sep 17 00:00:00 2001
+From: Luca Miccini <lmiccini@redhat.com>
+Date: Wed, 25 Sep 2019 17:12:39 +0200
+Subject: [PATCH] Add a configurable delay to Nova Evacuate calls
+
+In case /var/lib/nova/instances resides on NFS we have seen migrations
+failing with 'Failed to get "write" lock - Is another process using the
+image' errors.
+
+This has been tracked down to grace/lease timeouts not having expired
+before attempting the migration/evacuate, so in this cases it might be
+desirable to delay the nova evacuate call to give the storage time to
+release the locks.
+
+Change-Id: Ie2fe784202d754eda38092479b1ab3ff4d02136a
+Resolves: rhbz#1740069
+---
+
+diff --git a/heartbeat/NovaEvacuate b/heartbeat/NovaEvacuate
+index 810f30a..596f520 100644
+--- a/heartbeat/NovaEvacuate
++++ b/heartbeat/NovaEvacuate
+@@ -125,6 +125,15 @@
+ <content type="boolean" default="0" />
+ </parameter>
+ 
++<parameter name="evacuate_delay" unique="0" required="0">
++<longdesc lang="en">
++Allows delaying the nova evacuate API call, e.g. to give a storage array time to clean
++up eventual locks/leases.
++</longdesc>
++<shortdesc lang="en">Nova evacuate delay</shortdesc>
++<content type="integer" default="0" />
++</parameter>
++
+ </parameters>
+ 
+ <actions>
+@@ -216,6 +225,11 @@
+ 		fence_agent="fence_evacuate"
+ 	    fi
+ 
++            if [ ${OCF_RESKEY_evacuate_delay} != 0 ]; then
++                ocf_log info "Delaying nova evacuate by $OCF_RESKEY_evacuate_delay seconds"
++                sleep ${OCF_RESKEY_evacuate_delay}
++            fi
++
+ 	    ocf_log notice "Initiating evacuation of $node with $fence_agent"
+ 	    $fence_agent ${fence_options} -o status -n ${node}
+ 	    if [ $? = 1 ]; then

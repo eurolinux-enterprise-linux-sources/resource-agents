@@ -1,0 +1,82 @@
+From 5941b98140b09e39b4dc2ee155817b287ef32859 Mon Sep 17 00:00:00 2001
+From: zaenk <peter.pribula@hotmail.com>
+Date: Thu, 16 May 2019 15:01:43 +0200
+Subject: [PATCH 1/2] Fails docker RA gracefully when command not found Fails
+ gracefully when daemon not running
+
+---
+ heartbeat/docker | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/heartbeat/docker b/heartbeat/docker
+index c206344ad..1942b8f2f 100755
+--- a/heartbeat/docker
++++ b/heartbeat/docker
+@@ -33,6 +33,11 @@
+ : ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+ . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+ 
++# Parameter defaults
++
++OCF_RESKEY_daemon_pidfile_default="/var/run/docker.pid"
++: ${OCF_RESKEY_daemon_pidfile=${OCF_RESKEY_daemon_pidfile_default}}
++
+ #######################################################################
+ 
+ meta_data()
+@@ -176,6 +181,16 @@ container to be considered healthy.
+ <content type="boolean"/>
+ </parameter>
+ 
++<parameters>
++<parameter name="daemon_pidfile" required="0" unique="0">
++<longdesc lang="en">
++The RA will report not running status on hosts where the docker daemon
++is not running.
++</longdesc>
++<shortdesc lang="en">Name of the docker daemon pid file</shortdesc>
++<content type="string" default="${OCF_RESKEY_daemon_pidfile_default}"/>
++</parameter>
++
+ </parameters>
+ 
+ <actions>
+@@ -277,6 +292,16 @@ docker_simple_status()
+ {
+ 	local val
+ 
++	if [ ! -x "$(command -v docker)" ]; then 
++		ocf_log err "docker is not installed on this host"
++		return $OCF_ERR_INSTALLED
++	fi
++
++	if [ ! -e "$OCF_RESKEY_daemon_pidfile" ]; then
++		ocf_log err "docker daemon is not running, pid file $OCF_RESKEY_daemon_pidfile not exists"
++		return $OCF_NOT_RUNNING
++	fi
++
+ 	container_exists
+ 	if [ $? -ne 0 ]; then
+ 		return $OCF_NOT_RUNNING
+
+From dca670318452a4666984b2087ea562987d7c5b4f Mon Sep 17 00:00:00 2001
+From: zaenk <peter.pribula@hotmail.com>
+Date: Thu, 16 May 2019 15:46:28 +0200
+Subject: [PATCH 2/2] Fixes parameter meta-data
+
+---
+ heartbeat/docker | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/heartbeat/docker b/heartbeat/docker
+index 1942b8f2f..250714613 100755
+--- a/heartbeat/docker
++++ b/heartbeat/docker
+@@ -181,7 +181,6 @@ container to be considered healthy.
+ <content type="boolean"/>
+ </parameter>
+ 
+-<parameters>
+ <parameter name="daemon_pidfile" required="0" unique="0">
+ <longdesc lang="en">
+ The RA will report not running status on hosts where the docker daemon
