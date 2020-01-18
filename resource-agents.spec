@@ -95,7 +95,7 @@
 Name:		resource-agents
 Summary:	Open Source HA Reusable Cluster Resource Scripts
 Version:	4.1.1
-Release:	30%{?dist}.1
+Release:	30%{?dist}.2
 License:	GPLv2+ and LGPLv2+ and ASL 2.0
 URL:		https://github.com/ClusterLabs/resource-agents
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
@@ -176,6 +176,7 @@ Patch55:	bz1363902-SAPHanaSR-monitor-fix-tolower-error.patch
 Patch56:	bz1731426-dhcpd-keep-selinux-context.patch
 Patch57:	bz1731427-CTDB-1-fixes.patch
 Patch58:	bz1731427-CTDB-2-add-v4.9-support.patch
+Patch59:	bz1744923-SAPHanaTopology-make-multi-instance-aware.patch
 
 # bundle patches
 Patch1000:	bz1568588-7-gcp-bundled.patch
@@ -370,7 +371,7 @@ SAP instances to be managed in a cluster environment.
 License:	GPLv2+
 Summary:	SAP HANA Scale-Out cluster resource agents
 Version:	0.163.2
-Release:	7%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.1
+Release:	7%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.2
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
 Group:		System Environment/Base
 %else
@@ -390,7 +391,7 @@ environment.
 License:	GPLv2+
 Summary:	SAP cluster connector script
 Version:	3.0.1
-Release:	7%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.1
+Release:	7%{?rcver:%{rcver}}%{?numcomm:.%{numcomm}}%{?alphatag:.%{alphatag}}%{?dirty:.%{dirty}}%{?dist}.2
 %if 0%{?fedora} || 0%{?centos_version} || 0%{?rhel}
 Group:		System Environment/Base
 %else
@@ -473,6 +474,7 @@ exit 1
 %patch56 -p1
 %patch57 -p1
 %patch58 -p1 -F1
+%patch59 -p1
 
 # add SAPHana agents to Makefile.am
 mv %{saphana_prefix}-%{saphana_hash}/SAPHana/ra/SAPHana* heartbeat
@@ -1103,6 +1105,11 @@ ccs_update_schema > /dev/null 2>&1 ||:
 %endif
 
 %changelog
+* Fri Aug 23 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-30.2
+- SAPHanaTopology: make multi instance aware (MCOS)
+
+  Resolves: rhbz#1744923
+
 * Mon Jul 22 2019 Oyvind Albrigtsen <oalbrigt@redhat.com> - 4.1.1-30.1
 - dhcpd: keep SELinux context in chroot
 - CTDB: add support for v4.9+
